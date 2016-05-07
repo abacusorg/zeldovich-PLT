@@ -1,0 +1,31 @@
+Directions for using the header classes:
+
+#include "ParseHeader.hh"
+
+Declare a typedef for each of the input files to be parsed containing
+the variables one wishes to set. For example,
+
+   typedef struct {
+        double foo, goo;
+        int zip[100];
+        double *blah;
+        char svec[10][1024];
+   } codeparam;
+
+Write a version of 
+
+   template <>
+   void ParseHeader::register_vars(codeparam &P) {
+      installscalar("foo", P.foo, MUST_DEFINE);
+      installscalar("goo", P.goo, MUST_DEFINE);
+      installvector("blah", P.blah, 1024, 1, MUST_DEFINE); // can store a maximum of 1024 elements
+      installvector("svec", P.svec, 10, 1024, 0);          // must be allocated contiguously   
+   }
+
+Then to execute:
+
+   codeparam cp;
+   ParseHeader PH;
+   PH.register_vars(cp);
+   HeaderStream cpstream("myfile.in");
+   PH.ReadHeader(cpstream);

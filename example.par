@@ -1,0 +1,21 @@
+# An example zeldovich parameter file.
+# See the README for parameter descriptions
+
+BoxSize = 720
+CPD = 375
+ICFormat = "RVZel"
+InitialConditionsDirectory = "/path/to/ic/output/dir"
+InitialRedshift = 49
+NP = 2985984000
+ZD_NumBlock = 20
+ZD_PLT_filename = "./eigmodes128"
+ZD_PLT_target_z = 5
+ZD_Pk_filename = "camb_matterpower.dat"
+ZD_Pk_norm = 8.0
+ZD_Pk_scale = 1.0
+ZD_Pk_sigma = 0.0210839935761
+ZD_Pk_smooth = 0.0
+ZD_Seed = 12346
+ZD_k_cutoff = 1.0
+ZD_qPLT = 1
+ZD_qPLT_rescale = 0
