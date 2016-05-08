@@ -21,7 +21,7 @@ The code uses double precision internally, but you can set output format to sing
 The code can run small problems in memory, but it can also operate out-of-core to support large problems. Set the `-DDISK` option in the Makefile to turn this on.
 
 ## Usage
-Build with `make`, and run with `./zeldovich <param_file>`.  An example `param_file` is provided, and all of the options are listed in `zeldovich.cpp`.
+Build with `make`, and run with `./zeldovich <param_file>`.  An example parameter file (`example.par`) is provided, and all of the options are listed in `parameter.cpp`.  See the "Parameter file options" section below for detailed descriptions of the options.
 
 ### Dependencies
 Zeldovich-PLT needs FFTW 3 and GSL, and the ParseHeader library needs flex and Bison.  The code has been tested with g++, but it should work with the Intel compilers as well.
@@ -118,14 +118,14 @@ on `y=0`.
 
 ## PLT eigenmodes
 The PLT eigenmode features of this code are developed and tested in
-Garrison & Eisenstein (2016) based on the work of Marcos, et al. (2006).
+Garrison et al. (in prep.) based on the work of Marcos, et al. (2006).
 
 Nominally, this code only produces ZA displacements, from which velocities can 
 be computed in config space later.  However, using the PLT eigenmodes requires computing the
 velocities in Fourier space, so we have to do that here.  Thus, we require four
 complex FFTs instead of two.
 
-We provide a precompted set of 256<sup>3</sup> numerical eigenmodes with this code.
+We provide a precompted set of 128<sup>3</sup> numerical eigenmodes with this code.
 The code does linear interpolation if a finer FFT mesh is being used.
 
 ## Parameter file options
@@ -139,7 +139,7 @@ it must divide `PPD = NP^(1/3)` evenly.  The default is 2, but you
 may need a higher number.
 
 This is a key tuning parameter for the code.  The full problem
-requires `32*NP` bytes, which may exceed the amount of RAM.
+requires `32*NP` bytes (or `64*NP` if `ZD_qPLT` is being used), which may exceed the amount of RAM.
 The zeldovich code holds `2/NumBlock` of the full volume in memory,
 by splitting the problem in 2 dimensions into `NumBlock^2` parts.
 Each block therefore is `32*NP/NumBlock^2` bytes.  It
@@ -148,21 +148,20 @@ disk, so sizes of order 100 MB are useful.  We are holding
 `2*NumBlock` such blocks in memory.
 
 Hence, for a computer with `M` bytes of available memory and a
-problem of `NP` particles, we need `NumBlock >64*NP/M`
+problem of `NP` particles, we need `NumBlock > 64*NP/M`
 (preferably to be the next larger even number that divides evenly
 into `NP^(1/3)`) and we prefer that `32*NP/NumBlock^2` is 
 larger than the latency.
 
-For example, for a `4096^3` simulation, `M` is 2 TB.  If we use
+For example, for a `4096^3` simulation, `32*NP` is 2 TB.  If we use
 `NumBlock` of 128, then we will need 32 GB of RAM and each block saved
-to disk will be 128 MB.  For a `2048^3` simulation, `M` is 256 GB
+to disk will be 128 MB.  For a `2048^3` simulation, `32*NP` is 256 GB
 and `NumBlock` of 16 will require 32 GB of RAM and each block will
-be 1024 MB.  For a `8192^3` simulation, `M` is 16 TB and `NumBlock`
-of `512` will require 64 GB of RAM and a block size of 256 MB.
+be 1024 MB.  For a `8192^3` simulation, `32*NP` is 16 TB and `NumBlock`
+of `256` will require 128 GB of RAM and a block size of 256 MB.
 
 If `ZD_k_cutoff != 1`, then the actual `ZD_NumBlock` will be `ZD_NumBlock*ZD_k_cutoff`.
 See `ZD_k_cutoff` for details.
-
 
 `ZD_Pk_filename`: *string*  
 The file name of the input power spectrum.
@@ -229,28 +228,27 @@ Each component can be an integer in the range `[-ppd/2,ppd/2]`.
 If `> 0`, turn on particle linear theory corrections.
 This tweaks the displacements and velocities, mostly near `k_Nyquist`, to ensure everything starts in the growing mode.
 The output format will include velocities if you turn this on, either in the `RVZel` or `RVdoubleZel` format (set by a Makefile flag).
-See Garrison \& Eisenstein (2016).
+See Garrison et al. (in prep.).
 
 `ZD_PLT_filename`: *string*  
 The file containing the PLT eigenmodes; i.e. the true growing modes for the grid.
-We generate this on something like a $128^3$ grid, and linearly interpolate the eigenmodes and eigenvalues as needed.
+This file usually contains something like a 128<sup>3</sup> grid,
+and the code linearly interpolates the eigenmodes and eigenvalues to finer meshes as needed.
 
 `ZD_qPLT_rescale`: *integer*  
 If `> 0`, increase the amplitude of the displacements on small scales (near `k_Nyquist`)
-to preemptively compensate for future undergrowth that we know happens on a grid.  See Garrison \& Eisenstein (2016).
+to preemptively compensate for future undergrowth that we know happens on a grid.  See Garrison et al. (in prep.).
 
 `ZD_PLT_target_z`: *double*  
 If `ZD_qPLT_rescale > 0`, then increase the initial displacements such that they will match the linear theory prediction
-at this redshift.  Recall that modes on the grid (mostly) grow more slowly than linear theory, which is why we increase the initial displacements.
+at this redshift.  Recall that modes on the grid (mostly) grow more slowly than linear theory, which is why we (mostly) increase the initial displacements.
 This redshift should be in a quasi-linear regime where linear theory is still mostly valid, e.g. `z~5`.
 
 `ZD_k_cutoff`: *double*  
-The wavenumber above which not to input any power, expressed such that `k_max = k_Nyquist / k_cutoff`, e.g. `ZD_k_cutoff = 2` means we null out modes above half-Nyquist.  Non-whole numbers like 1.5 are allowed.  This is useful for doing convergence tests, e.g.~run once with `PPD=64` and `ZD_k_cutoff = 1`, and again with `PPD=128` and `ZD_k_cutoff = 2`.  This will produce two boxes with the exact same modes (although the PLT corrections will be slightly different), but the second box's modes are oversampled by a factor of two.  To keep the random number generation synchronized between the two boxes (fixed number of particle planes per block), `ZD_NumBlock` is increased by a factor of `ZD_k_cutoff`.
+The wavenumber above which not to input any power, expressed such that `k_max = k_Nyquist / k_cutoff`, e.g. `ZD_k_cutoff = 2` means we null out modes above half-Nyquist.  Non-whole numbers like 1.5 are allowed.  This is useful for doing convergence tests, e.g. run once with `PPD=64` and `ZD_k_cutoff = 1`, and again with `PPD=128` and `ZD_k_cutoff = 2`.  This will produce two boxes with the exact same modes (although the PLT corrections will be slightly different), but the second box's modes are oversampled by a factor of two.  To keep the random number generation synchronized between the two boxes (fixed number of particle planes per block), `ZD_NumBlock` is increased by a factor of `ZD_k_cutoff`.
 
 `BoxSize`: *double*  
-This is the box size, either in `Mpc` or `h^-1 Mpc`,
-depending on the setting of the `hMpc` key.  However, the zeldovich code does
-not use the `hMpc` value.  See `ZD_Pk_scale` for further discussion.
+This is the box size, probably in Mpc or h<sup>-1</sup>Mpc.  The zeldovich code only cares about the units to the extent that they should match the units in the power spectrum file.  See `ZD_Pk_scale` for further discussion.
 
 `NP`: *long long int*  
 Number of particles.  This must be a perfect cube for the zeldovich code to work.
