@@ -9,7 +9,7 @@ https://github.com/lgarrison/zeldovich-PLT
 ## Overview
 This code generates Zel'dovich approximation (ZA) initial conditions (i.e. first-order Lagrangian perturbation theory) for cosmological N-body simulations, optionally applying particle linear theory (PLT)
 corrections.  This code does not provide second-order ICs (2LPT), but one can use these ICs with the
-config-space 2LPT detailed in Garrison et al. (in prep.).
+config-space 2LPT detailed in [Garrison et al. (2016)](https://arxiv.org/abs/1605.02333).
 
 If you do not intend to use the config-space 2LPT, then it's better to use a Fourier-space 2LPT
 code (e.g. [2LPTic](http://cosmo.nyu.edu/roman/2LPT/)) than to rely on ZA, even with PLT corrections.
@@ -33,7 +33,7 @@ for a fixed set of modes.  One should keep fixed the starting redshift, volume, 
 To generate oversampled initial conditions (for example, 128<sup>3</sup> initial conditions that sample the same modes as 64<sup>3</sup> initial conditions), invoke the code twice: once with NP = 64<sup>3</sup> to generate the fiducial simulation, then again with NP = 128<sup>3</sup> and `ZD_k_cutoff = 2` to generate the oversampled.  This truncates the modes in the 128<sup>3</sup> sim at k<sub>Nyquist</sub>/2, and ensures the RNG is appropriately synchronized.  **Important**: do not change `ZD_NumBlock` between invocations!
 
 ## Citation
-If you use this code, please cite Garrison et al. (in prep.).
+If you use this code, please cite [Garrison et al. (2016)](https://arxiv.org/abs/1605.02333).
 
 ## Technical details
 We're doing four big `[z][y][x]` transform.  But we don't store the
@@ -118,7 +118,7 @@ on `y=0`.
 
 ## PLT eigenmodes
 The PLT eigenmode features of this code are developed and tested in
-Garrison et al. (in prep.) based on the work of Marcos, et al. (2006).
+[Garrison et al. (2016)](https://arxiv.org/abs/1605.02333) based on the work of Marcos, et al. (2006).
 
 Nominally, this code only produces ZA displacements, from which velocities can 
 be computed in config space later.  However, using the PLT eigenmodes requires computing the
@@ -212,6 +212,12 @@ a Gaussian smoothing as `exp(-r^2/2a^2)` on the density field, which is
 is useful for testing, as it reduces grid artifacts.  The smooth occurs
 after the power spectrum has been normalized.  Default is 0.
 
+`ZD_qPk_fix_to_mean`: *integer*  
+Fix the amplitude of the modes to sqrt(P(k)).  The phases are unchanged.
+That is, running with this option off then on will produce ICs with identical phases
+but different mode amplitudes.  This is useful for producing "paired and fixed" sims,
+as suggested by [Angulo & Pontzen (2016)](http://arxiv.org/abs/1603.05253). Default is 0.
+
 `ZD_qoneslab`: *integer*  
 If `> 0`, output only one PPD slab.  For debugging only.
 The default is `-1`.
@@ -228,7 +234,6 @@ Each component can be an integer in the range `[-ppd/2,ppd/2]`.
 If `> 0`, turn on particle linear theory corrections.
 This tweaks the displacements and velocities, mostly near `k_Nyquist`, to ensure everything starts in the growing mode.
 The output format will include velocities if you turn this on, either in the `RVZel` or `RVdoubleZel` format (set by a Makefile flag).
-See Garrison et al. (in prep.).
 
 `ZD_PLT_filename`: *string*  
 The file containing the PLT eigenmodes; i.e. the true growing modes for the grid.
@@ -237,7 +242,7 @@ and the code linearly interpolates the eigenmodes and eigenvalues to finer meshe
 
 `ZD_qPLT_rescale`: *integer*  
 If `> 0`, increase the amplitude of the displacements on small scales (near `k_Nyquist`)
-to preemptively compensate for future undergrowth that we know happens on a grid.  See Garrison et al. (in prep.).
+to preemptively compensate for future undergrowth that we know happens on a grid.
 
 `ZD_PLT_target_z`: *double*  
 If `ZD_qPLT_rescale > 0`, then increase the initial displacements such that they will match the linear theory prediction
@@ -320,5 +325,5 @@ public:
 ## License
 [MIT](LICENSE)
 
-If you use this code, please cite Garrison et al. (in prep.).
+If you use this code, please cite [Garrison et al. (2016)](https://arxiv.org/abs/1605.02333).
 

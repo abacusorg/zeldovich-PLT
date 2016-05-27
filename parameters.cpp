@@ -25,6 +25,7 @@ public:
     double Pk_norm;    // The scale to normalize P(k) at, in simulation units!
     double Pk_sigma;    // The normalization at that scale, at the initial redshift!
     double Pk_smooth;    // The scale to smooth P(k) at, in simulation units!
+    int qPk_fix_to_mean;    // Don't draw the mode amplitude from a Gaussian; use sqrt(P(k)) instead.
     char Pk_filename[200];   // The file name for the P(k) input
     char output_dir[1024];   // The file name for the Output
     char density_filename[200];   // The file name for a density file output
@@ -65,6 +66,7 @@ public:
         Pk_norm = 0;    // Legal default: Don't renormalize the power spectrum
         Pk_sigma = 0;    // Legal default, but you probably don't want this!
         Pk_smooth = 0;    // Legal default
+        qPk_fix_to_mean = 0; // Legal default
         seed = 0;    // Legal default
         strcpy(Pk_filename,"");   // Illegal
         strcpy(density_filename,"output.density");  // Legal default
@@ -121,6 +123,7 @@ public:
         installscalar("ZD_Pk_norm",Pk_norm,MUST_DEFINE);
         installscalar("ZD_Pk_sigma",Pk_sigma,MUST_DEFINE);
         installscalar("ZD_Pk_smooth",Pk_smooth,MUST_DEFINE);
+        installscalar("ZD_qPk_fix_to_mean",qPk_fix_to_mean,DONT_CARE);
         installscalar("ZD_Pk_filename",Pk_filename,MUST_DEFINE);
         installscalar("InitialConditionsDirectory",output_dir,MUST_DEFINE);
         installscalar("ZD_density_filename",density_filename,DONT_CARE);

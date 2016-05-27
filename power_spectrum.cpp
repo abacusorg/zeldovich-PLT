@@ -1,6 +1,7 @@
 class PowerSpectrum:public SplineFunction {
 public:
     PowerSpectrum(int n): SplineFunction(n) {};
+    int fixed_power;
     double normalization;
     double Pk_smooth2;   // param.Pk_smooth squared
     double Rnorm;   
@@ -12,7 +13,7 @@ public:
         return 0.5/M_PI/M_PI*k*k*w*w*this->power(k);
     }
     double sigmaR(double R) {
-        double target_prec = 1e-11;  // 1e-12 was causing divergence certain cases
+        double target_prec = 1e-11;  // 1e-12 was causing divergence in certain cases
         double precision = 1.0;
         Rnorm = R;
         double retval = sqrt(Romberg(&PowerSpectrum::sigmaR_integrand,0,10.0,target_prec,&precision));
@@ -103,6 +104,8 @@ public:
         // per cell of (2*pi/L)^3
         normalization /= param.boxsize*param.boxsize*param.boxsize;
         Pk_smooth2 = param.Pk_smooth*param.Pk_smooth;
+        
+        fixed_power = param.qPk_fix_to_mean;
         return 0;
     }
 
@@ -121,6 +124,7 @@ public:
     Complx cgauss(double wavenumber, int rng) {
         // Return a gaussian complex deviate scaled to the sqrt of the power
         // Box-Muller, adapted from Numerical Recipes
+        // If fixed_power is set, the complex deviate always has amplitude sqrt(P(k))
         double Pk = this->power(wavenumber);
         double phase1, phase2, r2;
         // printf("P(%f) = %g\n",wavenumber,Pk);
@@ -129,8 +133,12 @@ public:
             phase2 = one_rand(rng)*2.0-1.0;
             r2 = phase1*phase1+phase2*phase2;
         } while (!(r2<1.0&&r2>0.0));
-        r2 = sqrt(-Pk*log(r2)/r2);   // Drop the factor of 2, so these Gaussians
-        // have variance of 1/2.
+        if (fixed_power){
+            r2 = sqrt(Pk/r2);
+        } else {
+            r2 = sqrt(-Pk*log(r2)/r2);   // Drop the factor of 2, so these Gaussians
+                                         // have variance of 1/2.
+        }
         // printf("cgauss: %f %f\n", phase1*r2, phase2*r2);
         return Complx(phase1*r2,phase2*r2);
     }

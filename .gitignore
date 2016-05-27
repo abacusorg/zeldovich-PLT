@@ -2,3 +2,5 @@ zeldovich
 rng_test
 ParseHeader
 !ParseHeader/
+*.o
+*.a
