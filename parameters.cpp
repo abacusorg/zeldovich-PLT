@@ -98,11 +98,16 @@ public:
         T = gsl_rng_mt19937; //The mersene twister
         int block = ppd/numblock;
         rng = new gsl_rng *[block];
+        
+        //seed the rng. a seed of zero uses the current time
+        unsigned long int longseed = seed;
+        if (seed == 0){
+            longseed = time(0);
+            printf("Seed 0 will use current time %lu\n", longseed);
+        }
         for (int i = 0; i < block; i++){
-            rng[i] = gsl_rng_alloc (T);
-            //seed the rng. a seed of zero uses the current time
-            if(seed == 0) gsl_rng_set(rng[i],time(0)+i);
-            else gsl_rng_set(rng[i],seed+i);
+            rng[i] = gsl_rng_alloc(T);
+            gsl_rng_set(rng[i], longseed+i);
         }
     }
     ~Parameters() {

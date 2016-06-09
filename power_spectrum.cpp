@@ -106,6 +106,8 @@ public:
         Pk_smooth2 = param.Pk_smooth*param.Pk_smooth;
         
         fixed_power = param.qPk_fix_to_mean;
+        if (fixed_power)
+            printf("Fixing density mode amplitudes to sqrt(P(k))\n");
         return 0;
     }
 

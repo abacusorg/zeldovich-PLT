@@ -233,7 +233,7 @@ Each component can be an integer in the range `[-ppd/2,ppd/2]`.
 `ZD_qPLT`: *integer*  
 If `> 0`, turn on particle linear theory corrections.
 This tweaks the displacements and velocities, mostly near `k_Nyquist`, to ensure everything starts in the growing mode.
-The output format will include velocities if you turn this on, either in the `RVZel` or `RVdoubleZel` format (set by a Makefile flag).
+The output format should include velocities if you turn this on, either in the `RVZel` or `RVdoubleZel` format.
 
 `ZD_PLT_filename`: *string*  
 The file containing the PLT eigenmodes; i.e. the true growing modes for the grid.
