@@ -14,6 +14,10 @@ config-space 2LPT detailed in [Garrison et al. (2016)](https://arxiv.org/abs/160
 If you do not intend to use the config-space 2LPT, then it's better to use a Fourier-space 2LPT
 code (e.g. [2LPTic](http://cosmo.nyu.edu/roman/2LPT/)) than to rely on ZA, even with PLT corrections.
 
+This code supports two types of PLT corrections: (1) PLT eigenmodes, and (2) rescaling.  Both corrections are most important on small scales (approaching, e.g., k<sub>Nyquist</sub>/4).
+1. PLT eigenmodes (`ZD_qPLT`) initializes the simulation in the correct eigenmodes for a particle lattice.  This eliminates transients that arise due to the common assumption that the particle system obeys the continuum modes.
+2. Rescaling (`ZD_qPLT_rescale` and `ZD_PLT_target_z`) increases the amplitude of initial power on small scales to exactly cancel out future (unavoidable) under-growth.  This requires (1).
+
 This code does not presently support glass initial conditions, only particle lattices.
 
 The code uses double precision internally, but you can set output format to single or double precision (see the `ICFormat` option).
