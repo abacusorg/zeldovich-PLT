@@ -28,8 +28,18 @@ public:
         ramdisk = 0;
 #endif
     }
-    ~BlockArray() { 
+    ~BlockArray() {
+#ifdef DISK
+        // Clean up the "zeldovich.*.*" files
+        for(int yblock = 0; yblock < numblock; yblock++){
+            for(int zblock = 0; zblock < numblock; zblock++){
+                sprintf(filename,"%s/zeldovich.%1d.%1d",TMPDIR,yblock,zblock);
+                remove(filename);
+            }
+        }
+#else
         delete []arr;
+#endif
     }
 
     //    Complx *point(int a, int z, int y, int x) {
@@ -43,7 +53,7 @@ public:
 #ifdef DIRECTIO
         // These routines are for DIRECTIO
 private:
-    char filename[200];
+    char filename[1024];
     off_t fileoffset;
     int diskbuffer;
 public:
@@ -77,16 +87,16 @@ public:
     // These routines are for reading blocks on and off disk
 private: 
     FILE *fp;
+    char filename[1024];
 public:
     void bopen(int yblock, int zblock, const char *mode) {
         // Set up for reading or writing this block
-        char filename[200];
         assert(yblock>=0&&yblock<numblock);
         assert(zblock>=0&&zblock<numblock);
         sprintf(filename,"%s/zeldovich.%1d.%1d",TMPDIR,yblock,zblock);
 
         fp = fopen(filename,mode);
-        if(fp ==NULL) printf("bad filename: %s",filename);
+        if(fp == NULL) printf("bad filename: %s",filename);
         assert(fp!=NULL);
         
         return;
