@@ -1,7 +1,7 @@
 CXX = g++
 # Set DISK if you want to run the big BlockArray explicitly out of core.
 # Set -DDIRECTIO and -I../Convolution if you want to use lib_dio
-CXXFLAGS = -O3 -fopenmp -march=native -mavx -DDISK
+CXXFLAGS = -O3 -fopenmp -march=native -mavx -DDISK -Wall
 INCL = -IParseHeader
 LIBS = -LParseHeader -lparseheader -lfftw3 -lgsl -lgslcblas -lstdc++ -lgomp
 

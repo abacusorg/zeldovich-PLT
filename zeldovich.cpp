@@ -221,7 +221,8 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
     Complx D,F,G,H,f;
     Complx I(0.0,1.0);
     double k2;
-    int a, x,y,z, kx,ky,kz, xHer,yresHer,zHer;
+    unsigned int a;
+    int x,y,z, kx,ky,kz, xHer,yresHer,zHer;
     double k2_cutoff = param.nyquist*param.nyquist/(param.k_cutoff*param.k_cutoff);
 
     y = yres+yblock*array.block;
@@ -329,13 +330,14 @@ void StoreBlock(BlockArray& array, int yblock, int zblock, Complx *slab) {
     // data[zblock=0..NB-1][yblock=0..NB-1]
     //     [array=0..1][zresidual=0..P-1][yresidual=0..P-1][x=0..PPD-1]
     // Can't openMP an I/O loop.
-    int a,yres,y,zres,z,yresHer;
+    unsigned int a;
+    int yres,zres,z;
     array.bopen(yblock,zblock,"w");
     for (a=0;a<array.narray;a++) 
     for (zres=0;zres<array.block;zres++) 
     for (yres=0;yres<array.block;yres++) {
         z = zres+array.block*zblock;
-        y = yres+array.block*yblock;
+        //y = yres+array.block*yblock;  // the slab is in the y coordinate, so we never need the absolute y index
         // Copy the whole X skewer
         array.bwrite(&(AYZX(slab,a,yres,z,0)),array.ppd);
     }
@@ -349,7 +351,7 @@ void ZeldovichZ(BlockArray& array, Parameters& param, PowerSpectrum& Pk) {
     // Do Z direction inverse FFTs.
     // Pack the result into 'array'.
     Complx *slab, *slabHer;
-    int a,x,yres,yblock,y,zres,zblock,z, yresHer,zHer,xHer;
+    int yres,yblock,zblock;
     unsigned long long int len = 1llu*array.block*array.ppd*array.ppd*array.narray;
     slab    = new Complx[len];
     slabHer = new Complx[len];
@@ -390,12 +392,13 @@ void LoadBlock(BlockArray& array, int yblock, int zblock, Complx *slab) {
     // data[zblock=0..NB-1][yblock=0..NB-1]
     //     [array=0..1][zresidual=0..P-1][yresidual=0..P-1][x=0..PPD-1]
     // Can't openMP an I/O loop.
-    int a,yres,y,zres,z,yshift;
+    unsigned int a;
+    int yres,y,zres,yshift;
     array.bopen(yblock,zblock,"r");
     for (a=0;a<array.narray;a++)
     for (zres=0;zres<array.block;zres++) 
     for (yres=0;yres<array.block;yres++) {
-        z = zres+array.block*zblock;
+        //z = zres+array.block*zblock;  // slabs are in z; never need the absolute z coord
         y = yres+array.block*yblock;
         // Copy the whole X skewer.  However, we want to
         // shift the y frequencies in the reflected half
@@ -420,7 +423,8 @@ void ZeldovichXY(BlockArray& array, Parameters& param, FILE *output, FILE *denso
     Complx *slab;
     unsigned long long int len = 1llu*array.block*array.ppd*array.ppd*array.narray;
     slab = new Complx[len];
-    int a,x,yres,yblock,y,zres,zblock,z,yshift;
+    unsigned int a;
+    int x,yblock,y,zres,zblock,z;
     printf("Looping over Z: ");
     for (zblock=0;zblock<array.numblock;zblock++) {
         // We'll do one Z slab at a time
@@ -493,7 +497,7 @@ void load_eigmodes(Parameters &param){
     eigf.read((char*) &eig_vecs_ppd, sizeof(eig_vecs_ppd));
     
     size_t nbytes = eig_vecs_ppd*eig_vecs_ppd*(eig_vecs_ppd/2 + 1)*4*sizeof(double);
-    if(size != nbytes + sizeof(eig_vecs_ppd)){
+    if((size_t) size != nbytes + sizeof(eig_vecs_ppd)){
         std::cerr << "[Error] Eigenmode file \"" << param.PLT_filename << "\" of size " << size
             << " did not match expected size " << nbytes << " from eig_vecs_ppd " << eig_vecs_ppd << ".\n";
         exit(1);

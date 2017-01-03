@@ -70,13 +70,13 @@ public:
         return;
     }
     void bclose() { return; }
-    void bwrite(Complx *buffer,int num) {
+    void bwrite(Complx *buffer, size_t num) {
         // Write num Complx numbers to the buffer, increment the pointer
         WriteDirect WD(ramdisk, diskbuffer);
         int sizebytes = num*sizeof(Complx);
         WD.BlockingAppend(filename, (char*)buffer, sizebytes);
     }
-    void bread(Complx *buffer,int num) {
+    void bread(Complx *buffer, size_t num) {
         // Read num Complx numbers into the buffer, increment the pointer
         ReadDirect RD(ramdisk, diskbuffer);
         size_t sizebytes = num*sizeof(Complx);
@@ -96,19 +96,20 @@ public:
         sprintf(filename,"%s/zeldovich.%1d.%1d",TMPDIR,yblock,zblock);
 
         fp = fopen(filename,mode);
-        if(fp == NULL) printf("bad filename: %s",filename);
+        if(fp == NULL) printf("bad filename: %s\n",filename);
         assert(fp!=NULL);
         
         return;
     }
     void bclose() { fclose(fp); return; }
-    void bwrite(Complx *buffer,int num) {
+    void bwrite(Complx *buffer, size_t num) {
         // Write num Complx numbers to the buffer, increment the pointer
         fwrite(buffer,sizeof(Complx),num,fp);
     }
-    void bread(Complx *buffer,int num) {
+    void bread(Complx *buffer, size_t num) {
         // Read num Complx numbers into the buffer, increment the pointer
-        fread(buffer,sizeof(Complx),num,fp);
+        size_t nread = fread(buffer,sizeof(Complx),num,fp);
+        assert(nread == num);
     }
 #endif
 #else
@@ -124,11 +125,11 @@ public:
         return;
     }
     void bclose() { IOptr = NULL; return; }
-    void bwrite(Complx *buffer,int num) {
+    void bwrite(Complx *buffer, size_t num) {
         // Write num Complx numbers to the buffer, increment the pointer
         memcpy(IOptr,buffer,sizeof(Complx)*num); IOptr+=num;
     }
-    void bread(Complx *buffer,int num) {
+    void bread(Complx *buffer, size_t num) {
         // Read num Complx numbers into the buffer, increment the pointer
         memcpy(buffer,IOptr,sizeof(Complx)*num); IOptr+=num;
     }

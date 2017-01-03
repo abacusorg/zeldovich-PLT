@@ -206,7 +206,7 @@ void Parameters::print(FILE *fp) {
     fprintf(fp,"#modified by ");
     fprintf(fp,VERSION);
     fprintf(fp," TIME:  ");
-    fprintf(fp,asctime(now));
+    fprintf(fp,"%s", asctime(now));
     fprintf(fp,"\n");
     fprintf(fp,"\n");
     double *ainit;
