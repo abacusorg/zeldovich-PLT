@@ -30,7 +30,7 @@ The code can run small problems in memory, but it can also operate out-of-core t
 Build with `make`, and run with `./zeldovich <param_file>`.  An example parameter file (`example.par`) is provided, and all of the options are listed in `parameter.cpp`.  See the "Parameter file options" section below for detailed descriptions of the options.
 
 ### Dependencies
-Zeldovich-PLT needs FFTW 3 and GSL, and the ParseHeader library needs flex and Bison.  The code has been tested with g++, but it should work with the Intel compilers as well.
+Zeldovich-PLT needs FFTW 3 and GSL, and the ParseHeader library needs flex and Bison >= 3.0.  The code has been tested with g++, but it should work with the Intel compilers as well.
 
 ### Convergence testing
 This code supports testing N-body simulation convergence at linear order by increasing particle density ("oversampling")
