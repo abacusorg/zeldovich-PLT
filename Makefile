@@ -18,7 +18,7 @@ rng_test: rng_test.c
 	$(CXX) $(CXXFLAGS) $(INCL) $^ -o $@ $(LIBS)
 
 run_rng_test: rng_test
-	./rng_test | cmp rng_test.out - && (echo 'Passed RNG test.') || (echo 'Error: your platform did not produce the expected RNG values, and may thus generate IC files with unexpected phases.' ; exit 1)
+	@./rng_test | cmp rng_test.out - && (echo 'Passed RNG test.') || (echo 'Error: your platform did not produce the expected RNG values, and may thus generate IC files with unexpected phases.' ; exit 1)
     
 default: zeldovich
 
