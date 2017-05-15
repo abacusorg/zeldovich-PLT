@@ -4,7 +4,8 @@ public:
     int fixed_power;
     double normalization;
     double Pk_smooth2;   // param.Pk_smooth squared
-    double Rnorm;   
+    double Rnorm;
+    double kmax;  // max k in the input PS
     double sigmaR_integrand(double k) {
         double x=k*Rnorm;
         double w;
@@ -87,6 +88,7 @@ public:
             } else {
                 this->load(-1e3,log(P));
             }
+            kmax = std::max(k,kmax);
             nn++;
         }
         this->spline();
@@ -116,6 +118,15 @@ public:
         // Probably we should force P(k=0) to be 0.
         // The smoothing should be exp(-k^2 sig^2/2) for the density,
         // which is exp(-k^2 sig^2) for the power
+        static bool already_warned = false;
+        if (wavenumber > kmax && !already_warned) {
+            fprintf(stderr, "\n*** WARNING: power spectrum spline interpolation was requested\n"
+                            "    past the maximum k (%f) that was provided in the input power\n"
+                            "    spectrum file.  The extrapolation should be well-behaved, but\n"
+                            "    make sure that this was expected.  Provide a power spectrum\n"
+                            "    that goes to k=10 to get rid of this warning.\n", wavenumber, kmax);
+            already_warned = true;
+        }
         if (wavenumber<=0.0) return 0.0;
         return exp(this->val(log(wavenumber))-wavenumber*wavenumber*this->Pk_smooth2)*normalization;
     }
