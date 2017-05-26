@@ -124,7 +124,7 @@ public:
                             "    past the maximum k (%f) that was provided in the input power\n"
                             "    spectrum file.  The extrapolation should be well-behaved, but\n"
                             "    make sure that this was expected.  Provide a power spectrum\n"
-                            "    that goes to k=10 to get rid of this warning.\n", wavenumber, kmax);
+                            "    that goes to k=10 to get rid of this warning.\n", kmax);
             already_warned = true;
         }
         if (wavenumber<=0.0) return 0.0;

@@ -1,9 +1,9 @@
 CXX = g++
 # Set DISK if you want to run the big BlockArray explicitly out of core.
 # Set -DDIRECTIO and -I../Convolution if you want to use lib_dio
-CXXFLAGS = -O3 -fopenmp -march=native -mavx -DDISK -Wall
+CXXFLAGS = -O3 -fopenmp -march=native -Wall #-DDISK
 INCL = -IParseHeader
-LIBS = -LParseHeader -lparseheader -lfftw3 -lgsl -lgslcblas -lstdc++ -lgomp
+LIBS = -LParseHeader -lparseheader -lfftw3 -lgsl -lgslcblas -lstdc++
 
 all: zeldovich run_rng_test
 
@@ -22,7 +22,7 @@ run_rng_test: rng_test
     
 default: zeldovich
 
-.PHONY: clean distclean run_rng_test
+.PHONY: all clean distclean run_rng_test default
 clean:
 	make -C ParseHeader $@
 	$(RM) *.o *.gch *~

@@ -525,7 +525,9 @@ int main(int argc, char *argv[]) {
     param.append_file_to_comments(param.Pk_filename);
 
     //param.print(stdout);   // Inform the command line user
-    memory = CUBE(param.ppd/1024.0)*2*sizeof(Complx);
+    // Two arrays for dens,x,y,z, two more for vx,vy,vz
+    int narray = param.qPLT ? 4 : 2;
+    memory = CUBE(param.ppd/1024.0)*narray*sizeof(Complx);
     printf("Total memory usage (GB): %5.3f\n", memory);
     printf("Two slab memory usage (GB): %5.3f\n", memory/param.numblock*2.0);
     printf("File sizes (GB): %5.3f\n", memory/param.numblock/param.numblock);
@@ -553,8 +555,6 @@ int main(int argc, char *argv[]) {
     }
 
     Setup_FFTW(param.ppd);
-    // Two arrays for dens,x,y,z, two more for vx,vy,vz
-    int narray = param.qPLT ? 4 : 2;
     BlockArray array(param.ppd,param.numblock,narray,param.output_dir,param.ramdisk);    
     srandom(param.seed);
     ZeldovichZ(array, param, Pk);
