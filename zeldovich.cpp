@@ -532,18 +532,9 @@ int main(int argc, char *argv[]) {
     printf("Two slab memory usage (GB): %5.3f\n", memory/param.numblock*2.0);
     printf("File sizes (GB): %5.3f\n", memory/param.numblock/param.numblock);
 
-    /*
-    if (param.qnoheader==0) 
-        if (param.qascii) param.print(output,"zeldovich_ascii");
-    else {
-        if (param.qvelocity) param.print(output,"zeldovich_6float");
-        else param.print(output,"zeldovich_3float");
-    }
-*/
     if (param.qdensity>0) {
         densoutput = fopen(param.density_filename,"w");
         assert(densoutput!=NULL);
-        if (param.qnoheader==0) param.print(densoutput,"zeldovich_1float");
     } else densoutput = NULL;
 
     if(param.qPLT){

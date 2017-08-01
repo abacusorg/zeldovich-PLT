@@ -18,8 +18,6 @@ public:
     double k_cutoff; // the wavenumber above which to not input any power, expressed such that k_max = k_nyquist/k_cutoff.  2 = half nyquist, etc.
     int qdensity;    // If non-zero, output the density
     int qascii;        // If non-zero, output in ASCII
-    int qnoheader;    // If non-zero, don't attach a header
-    int qvelocity;    // If non-zero, include the velocities in the binary output
     int qoneslab;    // If >=0, only output this z slab.
     int seed;    // Random number seed
     double Pk_norm;    // The scale to normalize P(k) at, in simulation units!
@@ -60,8 +58,6 @@ public:
         Pk_scale = 1;    // Legal default
         qdensity = 0;    // Legal default
         qascii = 0;    // Legal default
-        qvelocity = 0;    // Legal default
-        qnoheader = 0;    // Legal default
         qoneslab = -1;    // Legal default
         Pk_norm = 0;    // Legal default: Don't renormalize the power spectrum
         Pk_sigma = 0;    // Legal default, but you probably don't want this!
@@ -121,8 +117,6 @@ public:
         installscalar("ZD_NumBlock",numblock,MUST_DEFINE);
         installscalar("CPD",cpd,MUST_DEFINE);
         installscalar("ZD_qdensity",qdensity,DONT_CARE);
-        installscalar("ZD_qnoheader",qnoheader,DONT_CARE);
-        installscalar("ZD_qvelocity",qvelocity,DONT_CARE);
         installscalar("ZD_qoneslab",qoneslab,DONT_CARE);
         installscalar("ZD_Seed",seed,MUST_DEFINE);
         installscalar("ZD_Pk_norm",Pk_norm,MUST_DEFINE);
