@@ -1,7 +1,14 @@
+#include <stdint.h>
+
 class PowerSpectrum:public SplineFunction {
 public:
-    PowerSpectrum(int n): SplineFunction(n) {};
+    PowerSpectrum(int n): SplineFunction(n) {
+        is_powerlaw = 0;
+        powerlaw_index = NAN;
+    };
     int fixed_power;
+    int is_powerlaw;
+    double powerlaw_index;
     double normalization;
     double Pk_smooth2;   // param.Pk_smooth squared
     double Rnorm;
@@ -14,20 +21,35 @@ public:
         return 0.5/M_PI/M_PI*k*k*w*w*this->power(k);
     }
     double sigmaR(double R) {
-        double target_prec = 1e-11;  // 1e-12 was causing divergence in certain cases
-        double precision = 1.0;
-        Rnorm = R;
-        double retval = sqrt(Romberg(&PowerSpectrum::sigmaR_integrand,0,10.0,target_prec,&precision));
-        if(precision > target_prec){
-            printf("Error: actual Romberg integration precision (%g) is greater than the target precision (%g); halting.\n", precision, target_prec);
-            exit(1);
+        if(!is_powerlaw){
+            double target_prec = 1e-6;  // 1e-12 was causing divergence in certain cases
+            double precision = 1.0;
+            Rnorm = R;
+            double retval = sqrt(Romberg(&PowerSpectrum::sigmaR_integrand,0,10.0,target_prec,&precision));
+            if(precision > target_prec){
+                printf("Error: actual Romberg integration precision (%g) is greater than the target precision (%g); halting.\n", precision, target_prec);
+                exit(1);
+            }
+            return retval;
         }
-        return retval;
+        else{
+            // Use the analytic power law solution
+            // See: http://nbviewer.jupyter.org/gist/lgarrison/7e41ee280c57554e256b834ac5c3f753
+            double n = powerlaw_index;
+            double retval = 9*pow(R,-n-3)*pow(2,-n-1)/(M_PI*M_PI*(n-3));
+            if((int)round(n) % 2 == 0.)
+                retval *= -(1+n)*M_PI/(2*tgamma(2-n)*cos(M_PI*n/2));
+            else
+                retval *= sin(n*M_PI/2)*tgamma(n+2)/((n-1)*n);
+            
+            retval = sqrt(retval*normalization);
+            return retval;
+        }
     }
     // Do Romberg integration with up to 25 bisections.
     // Give a precision 'prec'.  Also return the estimated precision in 'obtprec'.
 
-    #define MAXITER  25
+    #define MAXITER 32
     double Romberg(double (PowerSpectrum::*func)(double), double a, double b,
     double prec, double *obtprec) {
         int  jj;
@@ -38,7 +60,10 @@ public:
         jj = 0;
         do {
             jj++;
-            s = 0; for(int k=1; k<=(1<<(jj-1)); k++) s += (this->*func)(a + (2*k-1)*h);
+            s = 0;
+            #pragma omp parallel for reduction(+:s)
+            for(uint64_t k=1; k<=(1ULL<<(jj-1)); k++)
+                s += (this->*func)(a + (2*k-1)*h);
             TT[jj][1] = 0.5*TT[jj-1][1] + h * s;
             fourtokm1 = 1;
             for(int k=2; k<=jj; k++) {
@@ -46,7 +71,7 @@ public:
                 TT[jj][k] = TT[jj][k-1] + ( TT[jj][k-1] - TT[jj-1][k-1])/(fourtokm1 -1);
             }
             h *= 0.5;
-            //printf("TT[%d] = %g\n", jj, TT[jj][jj]);
+            printf("TT[%d] = %g\n", jj, TT[jj][jj]);
             if(jj>1 && fabs(TT[jj][jj]-TT[jj-1][jj-1])<prec*fabs(TT[jj][jj])) break;
         } while(jj<MAXITER);
 
@@ -54,7 +79,7 @@ public:
         return TT[jj][jj];
     }
     
-    int LoadPower(char filename[], Parameters& param) {
+    int InitFromFile(char filename[], Parameters& param) {
         // Read the file and load/compile the spline function
         // Return 0 if ok
         // Read the file
@@ -66,8 +91,7 @@ public:
         FILE *fp;
         double k,P;
         int nn;
-        Pk_smooth2 = 0.0;
-        normalization = 1.0;
+        printf("Loading power spectrum from file \"%s\"\n", filename);
         fp = fopen(filename,"r");
         if(fp == NULL){
             printf("Power spectrum file \"%s\" not found; exiting.\n", filename);
@@ -92,7 +116,25 @@ public:
             nn++;
         }
         this->spline();
-        
+
+        Normalize(param);
+        return 0;
+    }
+
+    int InitFromPowerLaw(double _powerlaw_index, Parameters& param){
+        assert(!std::isnan(_powerlaw_index));
+        powerlaw_index = _powerlaw_index;
+        is_powerlaw = 1;
+        printf("Initializing power spectrum with power law index %g\n", powerlaw_index);
+
+        Normalize(param);
+        return 0;
+    }
+
+    void Normalize(Parameters& param){
+        Pk_smooth2 = 0.0;
+        normalization = 1.0;
+
         // Might still have to normalize things!
         if (param.Pk_norm>0.0) { // Do a normalization 
             printf("Input sigma(%f) = %f\n", param.Pk_norm, sigmaR(param.Pk_norm));
@@ -110,7 +152,6 @@ public:
         fixed_power = param.qPk_fix_to_mean;
         if (fixed_power)
             printf("Fixing density mode amplitudes to sqrt(P(k))\n");
-        return 0;
     }
 
     double power(double wavenumber) {
@@ -118,17 +159,25 @@ public:
         // Probably we should force P(k=0) to be 0.
         // The smoothing should be exp(-k^2 sig^2/2) for the density,
         // which is exp(-k^2 sig^2) for the power
-        static bool already_warned = false;
-        if (wavenumber > kmax && !already_warned) {
-            fprintf(stderr, "\n*** WARNING: power spectrum spline interpolation was requested\n"
-                            "    past the maximum k (%f) that was provided in the input power\n"
-                            "    spectrum file.  The extrapolation should be well-behaved, but\n"
-                            "    make sure that this was expected.  Provide a power spectrum\n"
-                            "    that goes to k=10 to get rid of this warning.\n", kmax);
-            already_warned = true;
+        
+        if (wavenumber<=0.0)
+            return 0.0;
+
+        if(is_powerlaw){
+            // power law is raw k^n, times normalization and smoothing
+            return std::pow(wavenumber,powerlaw_index)*exp(-wavenumber*wavenumber*this->Pk_smooth2)*normalization;
+        } else {
+            static bool already_warned = false;
+            if (wavenumber > kmax && !already_warned) {
+                fprintf(stderr, "\n*** WARNING: power spectrum spline interpolation was requested\n"
+                                "    past the maximum k (%f) that was provided in the input power\n"
+                                "    spectrum file.  The extrapolation should be well-behaved, but\n"
+                                "    make sure that this was expected.  Provide a power spectrum\n"
+                                "    that goes to k=10 to get rid of this warning.\n", kmax);
+                already_warned = true;
+            }
+            return exp(this->val(log(wavenumber))-wavenumber*wavenumber*this->Pk_smooth2)*normalization;
         }
-        if (wavenumber<=0.0) return 0.0;
-        return exp(this->val(log(wavenumber))-wavenumber*wavenumber*this->Pk_smooth2)*normalization;
     }
 
     double one_rand(int i) {

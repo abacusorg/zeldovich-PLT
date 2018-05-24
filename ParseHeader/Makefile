@@ -1,5 +1,5 @@
-CXX = g++
-CXXFLAGS = -O2
+CXX := $(shell which icc >/dev/null && echo icc || echo g++)
+CXXFLAGS = -O2 -std=c++0x
 CPPFLAGS =
 LEX = flex
 YACC = bison
@@ -17,7 +17,8 @@ HFILES = ParseHeader.hh  phDriver.hh  stringutil.hh phScanner.hh phParser.tab.hh
 
 (%.o):%.cc;
 	$(CXX) ${CXXFLAGS} $(CPPFLAGS) -c $< 
-	$(AR) rv $@ $%
+	# older versions of ar don't support the U flag, so try both
+	$(AR) rvU $@ $% 2>/dev/null || $(AR) rv $@ $%
 	#- @ $(RM) -f $%
 
 # the library

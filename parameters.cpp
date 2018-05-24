@@ -25,6 +25,7 @@ public:
     double Pk_smooth;    // The scale to smooth P(k) at, in simulation units!
     int qPk_fix_to_mean;    // Don't draw the mode amplitude from a Gaussian; use sqrt(P(k)) instead.
     char Pk_filename[200];   // The file name for the P(k) input
+    double Pk_powerlaw_index;   // The power law index n for a pure power law P(k) ~ k^n
     char output_dir[1024];   // The file name for the Output
     char density_filename[200];   // The file name for a density file output
     double z_initial;
@@ -64,7 +65,8 @@ public:
         Pk_smooth = 0;    // Legal default
         qPk_fix_to_mean = 0; // Legal default
         seed = 0;    // Legal default
-        strcpy(Pk_filename,"");   // Illegal
+        strcpy(Pk_filename,"");   // Must specify Pk file or power law
+        Pk_powerlaw_index = NAN;  // Must specify Pk file or power law
         strcpy(density_filename,"output.density");  // Legal default
         qonemode = 0; // Legal default
         memset(one_mode, 0, 3*sizeof(int)); // Legal default
@@ -123,7 +125,8 @@ public:
         installscalar("ZD_Pk_sigma",Pk_sigma,MUST_DEFINE);
         installscalar("ZD_Pk_smooth",Pk_smooth,MUST_DEFINE);
         installscalar("ZD_qPk_fix_to_mean",qPk_fix_to_mean,DONT_CARE);
-        installscalar("ZD_Pk_filename",Pk_filename,MUST_DEFINE);
+        installscalar("ZD_Pk_filename",Pk_filename,DONT_CARE);
+        installscalar("ZD_Pk_powerlaw_index",Pk_powerlaw_index,DONT_CARE);
         installscalar("InitialConditionsDirectory",output_dir,MUST_DEFINE);
         installscalar("ZD_density_filename",density_filename,DONT_CARE);
         installscalar("InitialRedshift",z_initial,MUST_DEFINE);
@@ -168,7 +171,10 @@ int Parameters::setup() {
     assert(! (Pk_scale<=0.0) );
     assert(! (Pk_norm<0.0) );
     assert(! (Pk_sigma<0.0) );
-    assert(! (strlen(Pk_filename)==0) );
+    // Must specify exactly one of Pk file or power law index
+    assert( (bool)(strlen(Pk_filename) > 0) != (bool) !std::isnan(Pk_powerlaw_index) );
+    if(!std::isnan(Pk_powerlaw_index))
+        assert(Pk_powerlaw_index <= 0);  // technically the code supports blue spectra, but it's more likely input error!
     if(qPLT) assert(! (strlen(PLT_filename)==0) );
     assert(k_cutoff >= 1);
     

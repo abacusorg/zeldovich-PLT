@@ -1,8 +1,8 @@
 #include <string.h>
 #include <sstream>
-#include <math.h>
-#include <limits.h>
-#include <cfloat>
+#include <cmath>
+//#include <cfloat>
+#include <limits>
 #include "phScanner.hh"
 #include "phDriver.hh"
 #include "stringutil.hh"
@@ -207,7 +207,7 @@ void phDriver::stuffit(SYMENT **spec, VAL_STACK *list, int len, int varzone,
                     break;
                 case INTEGER:
                     STUFF(int, i, l, stride);
-                    if(llabs(list[i].value.l)>INT_MAX)
+                    if(llabs(list[i].value.l)>std::numeric_limits<int>::max())
                         ERROR(string("attempt to store too large a value: ") + 
                               ToString(list[i].value.l) + string(" in an int variable: ") +
                               string(pf->name), yylloc);
@@ -235,7 +235,7 @@ void phDriver::stuffit(SYMENT **spec, VAL_STACK *list, int len, int varzone,
                     break;
                 case FLOAT:
                     STUFF(float, f, d, stride);
-                    if(fabs(list[i].value.d)>FLT_MAX) {
+                    if(fabs(list[i].value.d)>std::numeric_limits<float>::max()) {
                         ERROR(string("attempt to store too large a value: ") +
                               ToString(list[i].value.d) + string(" in an float variable: ") +
                               string(pf->name), yylloc);

@@ -521,7 +521,12 @@ int main(int argc, char *argv[]) {
     Parameters param(argv[1]);
 
     PowerSpectrum Pk(10000);
-    if (Pk.LoadPower(param.Pk_filename,param)!=0) return 1;
+    if(strlen(param.Pk_filename) > 0){
+        if (Pk.InitFromFile(param.Pk_filename,param)!=0) return 1;
+    } else {
+        if (Pk.InitFromPowerLaw(param.Pk_powerlaw_index,param)!=0) return 1;
+    }
+    
     param.append_file_to_comments(param.Pk_filename);
 
     //param.print(stdout);   // Inform the command line user

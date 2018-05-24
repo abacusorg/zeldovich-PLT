@@ -52,7 +52,6 @@ void HeaderStream::SkipHeader(void) {
         return;
     }
     int len = 1;
-    
     do {
         buf[0] = buf[1];
         if(fread(&(buf[1]), 1, 1, fp)<=0){
@@ -73,7 +72,7 @@ void HeaderStream::GetHeaderLength(void) {
 }
 
 void HeaderStream::ReadHeader(void) {
-    GetHeaderLength();
+    GetHeaderLength();  // this guarantees there is a valid header
     buffer = new char[bufferlength];
     OpenForRead();
     size_t nread = fread(&(buffer[0]), 1, bufferlength-2, fp);
@@ -149,7 +148,7 @@ void WriteHStream(FILE *fp, HeaderStream &in, std::string pre) {
     std::stringstream ss(std::stringstream::in | std::stringstream::out);
     std::string line;
     ss << in.buffer;
-    while(getline(ss,line)!=0) {
+    while(getline(ss,line)) {
         std::cout << pre + line + "\n";
         line = pre + line + "\n";
         fwrite(line.c_str(), sizeof(char), line.length(), fp);
