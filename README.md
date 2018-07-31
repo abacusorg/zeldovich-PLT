@@ -136,7 +136,7 @@ The code does linear interpolation if a finer FFT mesh is being used.
 
 ## Parameter file options
 `ZD_Seed`: *integer*  
-The random number seed.
+The random number seed.  Both this variable and `ZD_NumBlock` affect the output phases.
 
 `ZD_NumBlock`: *integer*  
 This is the number of blocks to break the FFT
@@ -168,6 +168,8 @@ of `256` will require 128 GB of RAM and a block size of 256 MB.
 
 If `ZD_k_cutoff != 1`, then the actual `ZD_NumBlock` will be `ZD_NumBlock*ZD_k_cutoff`.
 See `ZD_k_cutoff` for details.
+
+Both this variable and `ZD_Seed` affect the output phases.
 
 `ZD_Pk_filename`: *string*  
 The file name of the input power spectrum.
