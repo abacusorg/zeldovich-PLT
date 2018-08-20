@@ -4,3 +4,4 @@ ParseHeader
 !ParseHeader/
 *.o
 *.a
+*.d

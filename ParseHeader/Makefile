@@ -1,6 +1,10 @@
-CXX := $(shell which icc >/dev/null && echo icc || echo g++)
-CXXFLAGS = -O2 -std=c++0x
-CPPFLAGS =
+ROOT_DIR := ../..
+#-include $(ROOT_DIR)/common.mk
+
+CXX ?= g++
+CXXFLAGS ?= -std=c++11
+CPPFLAGS ?= -O1 -g
+
 LEX = flex
 YACC = bison
 
@@ -12,18 +16,18 @@ CXXFILES =  stringutil.cc phParser.tab.cc phScanner.cc ParseHeader.cc phDriver.c
 OFILES =  ${addprefix $(LIBRARY)(, ${addsuffix ), ${CXXFILES:.cc=.o}}}
 HFILES = ParseHeader.hh  phDriver.hh  stringutil.hh phScanner.hh phParser.tab.hh
 
+# the library
+$(LIBRARY): $(OFILES) $(HFILES)
+.PRECIOUS: $(LIBRARY)
+
 %.o:%.cc;
 	$(CXX) ${CXXFLAGS} $(CPPFLAGS) -c $< $*.o
 
 (%.o):%.cc;
 	$(CXX) ${CXXFLAGS} $(CPPFLAGS) -c $< 
-	# older versions of ar don't support the U flag, so try both
+	@# older versions of ar don't support the U flag, so try both
 	$(AR) rvU $@ $% 2>/dev/null || $(AR) rv $@ $%
-	#- @ $(RM) -f $%
-
-# the library
-$(LIBRARY): $(OFILES) $(HFILES)
-.PRECIOUS: $(LIBRARY)
+	@#- @ $(RM) -f $%
 
 # the example executable
 
@@ -46,7 +50,7 @@ phParser.tab.cc phParser.tab.hh: phParser.yy phDriver.hh
 
 phDriver.o: phDriver.cc phDriver.hh phScanner.hh phParser.tab.hh
 
-phDriver.hh: phParser.tab.hh
+#phDriver.hh: phParser.tab.hh
 
 ParseHeader.hh: phDriver.hh
 

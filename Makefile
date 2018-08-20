@@ -1,31 +1,38 @@
-CXX := $(shell which icc >/dev/null && echo icc || echo g++)
+# Load Abacus's make settings if available
+ROOT_DIR := ..
+-include $(ROOT_DIR)/common.mk
+
+CXX ?= g++
 # Set DISK if you want to run the big BlockArray explicitly out of core.
 # Set -DDIRECTIO and -I../Convolution if you want to use lib_dio
-CXXFLAGS = -O3 -fopenmp -march=native -Wall -DDISK
-INCL = -IParseHeader
-LIBS = -LParseHeader -lparseheader -lfftw3 -lgsl -lgslcblas -lstdc++
+CXXFLAGS ?= -O3 -fopenmp -march=native -Wall 
+PARSEHEADER_CPPFLAGS ?= -I ParseHeader
+PARSEHEADER_LIBS ?= -L ParseHeader -lparseheader
+CPPFLAGS += -DDISK $(THREAD_CPPFLAGS) $(PARSEHEADER_CPPFLAGS)
 
-all: zeldovich run_rng_test
+LIBS = $(PARSEHEADER_LIBS) -lfftw3 -lgsl -lgslcblas -lstdc++
 
-zeldovich: zeldovich.o 
-	make -C ParseHeader
-	$(CXX) $(CXXFLAGS) $^ -o $@ $(LIBS)
+all: zeldovich 
+
+zeldovich: zeldovich.o | ParseHeader
+	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $< -o $@ $(LIBS)
 
 zeldovich.o: zeldovich.cpp
-	$(CXX) $(CXXFLAGS) $(INCL) -c $^
+	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -MMD -c $<
+
+-include zeldovich.d
 
 rng_test: rng_test.c
-	$(CXX) $(CXXFLAGS) $(INCL) $^ -o $@ $(LIBS)
+	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $^ -o $@ $(LIBS)
 
-run_rng_test: rng_test
+run_rng_test: rng_test | zeldovich
 	@./rng_test | cmp rng_test.out - && (echo 'Passed RNG test.') || (echo 'Error: your platform did not produce the expected RNG values, and may thus generate IC files with unexpected phases.' ; exit 1)
-
-default: zeldovich
 
 .PHONY: all clean distclean run_rng_test default
 clean:
-	make -C ParseHeader $@
+	$(MAKE) -C ParseHeader $@
 	$(RM) *.o *.gch *~
-distclean:
-	make -C ParseHeader $@
-	$(RM) *.o *.gch zeldovich rng_test *~
+
+distclean: clean
+	$(MAKE) -C ParseHeader $@
+	$(RM) zeldovich rng_test *.d
