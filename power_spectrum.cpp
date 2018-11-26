@@ -71,7 +71,7 @@ public:
                 TT[jj][k] = TT[jj][k-1] + ( TT[jj][k-1] - TT[jj-1][k-1])/(fourtokm1 -1);
             }
             h *= 0.5;
-            printf("TT[%d] = %g\n", jj, TT[jj][jj]);
+            //printf("TT[%d] = %g\n", jj, TT[jj][jj]);
             if(jj>1 && fabs(TT[jj][jj]-TT[jj-1][jj-1])<prec*fabs(TT[jj][jj])) break;
         } while(jj<MAXITER);
 
