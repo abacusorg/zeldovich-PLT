@@ -356,11 +356,11 @@ void ZeldovichZ(BlockArray& array, Parameters& param, PowerSpectrum& Pk) {
     slab    = new Complx[len];
     slabHer = new Complx[len];
     //
-    printf("Looping over Y: ");
+    fprintf(stderr,"Looping over Y: ");
     for (yblock=0;yblock<array.numblock/2;yblock++) {
         // We're going to do each pair of Y slabs separately.
         // Load the deltas and do the FFTs for each pair of planes
-        printf(".."); fflush(stdout);
+        fprintf(stderr,".."); fflush(stdout);
         #pragma omp parallel
         {  //begin parallel region
             #pragma omp for private(yres) schedule(static,1)
@@ -378,7 +378,7 @@ void ZeldovichZ(BlockArray& array, Parameters& param, PowerSpectrum& Pk) {
     }  // End yblock for loop
     delete []slabHer;
     delete []slab;
-    printf("\n"); fflush(stdout);
+    fprintf(stderr,"\n");
     return;
 }
 
@@ -425,12 +425,12 @@ void ZeldovichXY(BlockArray& array, Parameters& param, FILE *output, FILE *denso
     slab = new Complx[len];
     unsigned int a;
     int x,yblock,y,zres,zblock,z;
-    printf("Looping over Z: ");
+    fprintf(stderr,"Looping over Z: ");
     for (zblock=0;zblock<array.numblock;zblock++) {
         // We'll do one Z slab at a time
         // Load the slab back in.  
         // Can't openMP an I/O loop.
-        printf("."); fflush(stdout);
+        fprintf(stderr,".");
         for (yblock=0;yblock<array.numblock;yblock++) {
             LoadBlock(array, yblock, zblock, slab);
         } 
@@ -475,14 +475,14 @@ void ZeldovichXY(BlockArray& array, Parameters& param, FILE *output, FILE *denso
         }
     } // End zblock for loop
     delete []slab;
-    printf("\n"); fflush(stdout);
+    fprintf(stderr,"\n");
     return;
 }
 
 // ===============================================================
 
 void load_eigmodes(Parameters &param){
-    printf("Using PLT eigenmodes.\n");
+    fprintf(stderr,"Using PLT eigenmodes.\n");
     // The eigvecs file consists of the ppd (32-bit int)
     // followed by PPDxPPDx(PPD/2+1)*4 doubles
     std::ifstream eigf;
@@ -511,7 +511,7 @@ void load_eigmodes(Parameters &param){
 
 int main(int argc, char *argv[]) {
     if (argc != 2){
-        printf("Usage: %s param_file\n", argv[0]);
+        fprintf(stderr,"Usage: %s param_file\n", argv[0]);
         exit(1);
     }
     
@@ -533,9 +533,9 @@ int main(int argc, char *argv[]) {
     // Two arrays for dens,x,y,z, two more for vx,vy,vz
     int narray = param.qPLT ? 4 : 2;
     memory = CUBE(param.ppd/1024.0)*narray*sizeof(Complx);
-    printf("Total memory usage (GB): %5.3f\n", memory);
-    printf("Two slab memory usage (GB): %5.3f\n", memory/param.numblock*2.0);
-    printf("File sizes (GB): %5.3f\n", memory/param.numblock/param.numblock);
+    fprintf(stderr,"Total memory usage (GB): %5.3f\n", memory);
+    fprintf(stderr,"Two slab memory usage (GB): %5.3f\n", memory/param.numblock*2.0);
+    fprintf(stderr,"File sizes (GB): %5.3f\n", memory/param.numblock/param.numblock);
 
     if (param.qdensity>0) {
         densoutput = fopen(param.density_filename,"w");
@@ -547,7 +547,7 @@ int main(int argc, char *argv[]) {
     }
     
     if(param.k_cutoff != 1){
-        printf("Using k_cutoff = %f (effective ppd = %d)\n", param.k_cutoff, (int)(param.ppd/param.k_cutoff+.5));
+        fprintf(stderr,"Using k_cutoff = %f (effective ppd = %d)\n", param.k_cutoff, (int)(param.ppd/param.k_cutoff+.5));
     }
 
     Setup_FFTW(param.ppd);
@@ -557,12 +557,12 @@ int main(int argc, char *argv[]) {
     output = 0; // Current implementation doesn't use user-provided output
     ZeldovichXY(array, param, output, densoutput);
 
-    printf("The rms density variation of the pixels is %f\n", sqrt(density_variance/CUBE(param.ppd)));
-    printf("This could be compared to the P(k) prediction of %f\n",
+    fprintf(stderr,"The rms density variation of the pixels is %f\n", sqrt(density_variance/CUBE(param.ppd)));
+    fprintf(stderr,"This could be compared to the P(k) prediction of %f\n",
     Pk.sigmaR(param.separation/4.0)*pow(param.boxsize,1.5));
     
-    printf("The maximum component-wise displacements are (%g, %g, %g).\n", max_disp[0], max_disp[1], max_disp[2]);
-    printf("For Abacus' 2LPT implementation to work (assuming FINISH_WAIT_RADIUS = 1),\nthis implies a maximum CPD of %d\n", (int) (param.boxsize/(2*max_disp[2])));  // The slab direction is z in this code
+    fprintf(stderr,"The maximum component-wise displacements are (%g, %g, %g).\n", max_disp[0], max_disp[1], max_disp[2]);
+    fprintf(stderr,"For Abacus' 2LPT implementation to work (assuming FINISH_WAIT_RADIUS = 1),\nthis implies a maximum CPD of %d\n", (int) (param.boxsize/(2*max_disp[2])));  // The slab direction is z in this code
     // fclose(output);
     
     if(param.qPLT)
