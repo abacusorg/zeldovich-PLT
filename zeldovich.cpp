@@ -70,12 +70,19 @@ double max_disp[3];
 #include "fftw3.h"
 fftw_plan plan1d, plan2d;
 void Setup_FFTW(int n) {
+
+    // For big n, this is slow enough to notice
+    if(n > 1024)
+        fprintf(stderr,"Creating FFTW plans...");
+
     fftw_complex *p;
     p = new fftw_complex[n*n];
     plan1d = fftw_plan_dft_1d(n, p, p, +1, FFTW_PATIENT);
     plan2d = fftw_plan_dft_2d(n, n, p, p, +1, FFTW_PATIENT);
     delete []p;
-    return;
+
+    if(n > 1024)
+        fprintf(stderr," done.\n");
 }
 
 void Inverse1dFFT(Complx *p, int n) {
