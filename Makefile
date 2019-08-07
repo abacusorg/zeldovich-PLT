@@ -8,9 +8,13 @@ CXX ?= g++
 CXXFLAGS ?= -O3 -fopenmp -march=native -Wall 
 PARSEHEADER_CPPFLAGS ?= -I ParseHeader
 PARSEHEADER_LIBS ?= -L ParseHeader -lparseheader
-CPPFLAGS += -DDISK $(THREAD_CPPFLAGS) $(PARSEHEADER_CPPFLAGS)
 
-LIBS = $(PARSEHEADER_LIBS) -lfftw3 -lgsl -lgslcblas -lstdc++
+GSL_LIBS ?= $(shell gsl-config --libs)
+GSL_CPPFLAGS ?= $(shell gsl-config --cflags)
+
+CPPFLAGS += -DDISK $(THREAD_CPPFLAGS) $(PARSEHEADER_CPPFLAGS) $(GSL_CPPFLAGS)
+
+LIBS := $(PARSEHEADER_LIBS) -lfftw3 $(GSL_LIBS) -lstdc++
 
 all: zeldovich 
 
@@ -36,3 +40,9 @@ clean:
 distclean: clean
 	$(MAKE) -C ParseHeader $@
 	$(RM) zeldovich rng_test *.d
+
+ifndef HAVE_COMMON_MK
+ParseHeader: ParseHeader/libparseheader.a
+ParseHeader/libparseheader.a:
+	$(MAKE) -C ParseHeader libparseheader.a
+endif
