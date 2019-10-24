@@ -57,12 +57,12 @@ We store these two arrays interleaved at the block level.
 
 We order the full array as:
 
-```
+```c++
 double complex data[zblock=0..NB-1][yblock=0..NB-1][arr=0..1][zresidual=0..P-1][yresidual=0..P-1][x=0..PPD-1]
 ```
 
 where
-```
+```c++
 z = zblock*P+zresidual
 zblock = floor(z/P)
 zresidual = z-P*floor(z/P)
@@ -85,14 +85,14 @@ chunk from disk.
 ### FFT packing and mode generation
 We're going to load the 4 real FFTs into 2 complex FFTs.  This will
 allow us to do the iFFTs as a simple cubic approach.  We'll have
-```
+```c++
 Re A = density
 Im A = q_x
 Re B = q_y
 Im B = q_z
 ```
 So `Ahat = D + iF, and Bhat = G + iH`, where
-```
+```c++
 D(k) = D(-k)^* = delta(k)
 F(k) = F(-k)^* = delta(k)*i k_x/k^2
 G(k) = G(-k)^* = delta(k)*i k_y/k^2
@@ -290,7 +290,7 @@ All displacements are comoving displacements in the same units as `BoxSize`, and
 To get to physical velocities from comoving redshift-space displacements, multiply by a*H(z).
 
 The comoving positions of the initial lattice (in unit-box units where the domain is [0,1)) are simply given by
-```
+```c++
 x = i/PPD
 y = j/PPD
 z = k/PPD
@@ -299,7 +299,7 @@ Thus, the global, absolute positions of the particles can be formed by adding th
 
 - `RVZel`  
 Single-precision output of the displacement and velocity, and particle lattice location.
-```
+```c++
 class RVZelParticle {
 public:
     unsigned short i,j,k;
@@ -310,7 +310,7 @@ public:
 
 - `RVdoubleZel`  
 Double-precision output of the displacement and velocity, and particle lattice location.
-```
+```c++
 class RVdoubleZelParticle {
 public:
     unsigned short i,j,k;
@@ -321,7 +321,7 @@ public:
 
 - `Zeldovich`  
 Double-precision output of the displacement and particle lattice location.
-```
+```c++
 class ZelParticle {
 public:
     unsigned short i,j,k;
