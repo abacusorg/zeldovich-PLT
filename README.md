@@ -3,7 +3,7 @@
 ## Authors
 Daniel Eisenstein & Lehman Garrison  
 lgarrison@cfa.harvard.edu  
-https://github.com/lgarrison/zeldovich-PLT
+https://github.com/abacusorg/zeldovich-PLT
 
 
 ## Overview
