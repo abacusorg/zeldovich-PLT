@@ -1,8 +1,7 @@
 # zeldovich-PLT
 
 ## Authors
-Daniel Eisenstein & Lehman Garrison  
-lgarrison@cfa.harvard.edu  
+Daniel Eisenstein & Lehman Garrison
 https://github.com/abacusorg/zeldovich-PLT
 
 
