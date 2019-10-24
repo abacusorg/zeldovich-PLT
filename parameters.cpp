@@ -7,7 +7,7 @@ public:
     double boxsize;     // Units for the simulation box
     double Pk_scale;    // A rescaling in case the simulation units 
     // are different from the P(k) input file units
-    int ppd;        // The size of the simulation grid to generate
+    int64_t ppd;        // The size of the simulation grid to generate
     int cpd;
     long long int np;
     int numblock;    // The number of blocks to divide this into.
@@ -42,6 +42,13 @@ public:
     char ICFormat[1024]; // Abacus's expected input format (i.e. our output format)
     
     int ramdisk; // If -DDIRECTIO, need to know if we're on a ramdisk
+
+    // Version of the algorithm for getting modes from RNG
+    // This directly impacts the phases you get out.
+    // Use version = 2 unless you need backwards compatibility with old ICs,
+    // in which case use version = 1 (but beware the phases will depend
+    // on ZD_NumBlock)
+    int version;
     
 
     int setup();
@@ -77,6 +84,7 @@ public:
         k_cutoff = 1.; // Legal default (corresponds to k_nyquist)
         strcpy(ICFormat,""); // Illegal default
         ramdisk = 0;  // Legal default for most cases
+        version = 1;  // All new ICs should use verison 2, but the default is 1 for backwards compatibility
         
         // Read the paramater file values
         register_vars();
@@ -139,6 +147,7 @@ public:
         installscalar("ZD_k_cutoff",k_cutoff,DONT_CARE);
         installscalar("ICFormat",ICFormat,MUST_DEFINE);
         installscalar("RamDisk",ramdisk,DONT_CARE);
+        installscalar("ZD_Version",version,DONT_CARE);
     }
 
 
@@ -147,21 +156,33 @@ public:
 int Parameters::setup() {
     // Compute any derived quantities.  Look for errors.
     // Return 0 if all is well, 1 if this failed.
+
+    if(version == 1){
+        printf(R"(
+*** WARNING: zeldovich-PLT is being invoked with ZD_Version = 1.
+    This means that the output phases depend on the ZD_NumBlock tuning parameter,
+    so version 1 should only be used for backwards compatibility.  Use ZD_Version = 2
+    for new ICs.
+)");
+    }
     
     double npcr = pow(np,1.0/3.0);
     ppd = (long long int) floor(npcr+0.5);
     if(ppd - npcr > .0001){
-        printf("ppd: %d\n",ppd);
+        printf("ppd: %ld\n",ppd);
         printf("npcr: %5.4f\n", npcr);
 
         assert(ppd - npcr < .0001);
     }
     
-    // This is critical for random number synchronization among different ppd
-    if(k_cutoff != 1.){
-        int numblock_old = numblock;
-        numblock = numblock*k_cutoff + .5; // Ensure rounding
-        printf("Note: using k_cutoff=%f means that we are using NumBlock=%d instead of the supplied value of NumBlock=%d\n", k_cutoff, numblock, numblock_old);
+    // NumBlock is only modified in version 1
+    if(version == 1){
+        // This is critical for random number synchronization among different ppd
+        if(k_cutoff != 1.){
+            int numblock_old = numblock;
+            numblock = numblock*k_cutoff + .5; // Ensure rounding
+            printf("Note: using k_cutoff=%f means that we are using NumBlock=%d instead of the supplied value of NumBlock=%d\n", k_cutoff, numblock, numblock_old);
+        }
     }
 
     // Check for illegal values

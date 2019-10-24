@@ -16,9 +16,12 @@ v1.5-- Changed standard random call to mersene twister from the GSL
 v1.6-- Support for "oversampled" simulations (same modes at different PPD) via the k_cutoff option
 
 v1.7-- Support for PLT eigenmodes and rescaling
+
+v2.0-- The generation of modes from RNG has changed! Use "ZD_Version = 1" to get the old phases
+(but beware version 1 phases depend on ZD_NumBlock).
 */
 
-#define VERSION "zeldovich_v1.7"
+#define VERSION "zeldovich_v2.0"
 
 #include <cmath>
 #include <cassert>
@@ -56,7 +59,7 @@ static double __dcube;
 
 gsl_rng ** rng; //The random number generator
 double* eig_vecs;
-int eig_vecs_ppd;
+int64_t eig_vecs_ppd;
 double max_disp[3];
 
 #include "parameters.cpp"
@@ -116,16 +119,17 @@ void InverseFFT_Yonly(Complx *p, int n) {
 //================================================================
 
 // We use a set of X-Z arrays of Complx numbers (ordered by A and Y).
-#define AYZX(_slab,_a,_y,_z,_x) _slab[(_x)+array.ppd*((_z)+array.ppd*((_a)+array.narray*(_y)))]
+// array.ppd is 64-bit, so this expression should be safe from overflow
+#define AYZX(_slab,_a,_y,_z,_x) _slab[(int64_t)(_x)+array.ppd*((_z)+array.ppd*((_a)+array.narray*(_y)))]
 
 typedef struct {
     double vec[3];
     double val;
 } eigenmode;
 
-double interp_eigmode(int ikx, int iky, int ikz, int i, int ppd){
-#define EIGMODE(_kx,_ky,_kz,_i) (eig_vecs[(_kx)*eig_vecs_ppd*halfppd*4 + (_ky)*halfppd*4 + (_kz)*4 + (_i)])
-    int halfppd = eig_vecs_ppd/2 + 1;
+double interp_eigmode(int ikx, int iky, int ikz, int i, int64_t ppd){
+#define EIGMODE(_kx,_ky,_kz,_i) (eig_vecs[(int64_t)(_kx)*eig_vecs_ppd*halfppd*4 + (_ky)*halfppd*4 + (_kz)*4 + (_i)])
+    int64_t halfppd = eig_vecs_ppd/2 + 1;
     if(eig_vecs_ppd % ppd == 0)
         return EIGMODE(ikx*eig_vecs_ppd/ppd, iky*eig_vecs_ppd/ppd, ikz*eig_vecs_ppd/ppd, i);
     
@@ -178,7 +182,7 @@ double interp_eigmode(int ikx, int iky, int ikz, int i, int ppd){
            f[6]*EIGMODE(ikx_h, iky_h, ikz_l, i) + f[7]*EIGMODE(ikx_h, iky_h, ikz_h, i);
 }
 
-eigenmode get_eigenmode(int kx, int ky, int kz, int ppd, int qPLT){
+eigenmode get_eigenmode(int kx, int ky, int kz, int64_t ppd, int qPLT){
     eigenmode e;
     
     if(qPLT){
@@ -358,8 +362,8 @@ void ZeldovichZ(BlockArray& array, Parameters& param, PowerSpectrum& Pk) {
     // Do Z direction inverse FFTs.
     // Pack the result into 'array'.
     Complx *slab, *slabHer;
-    int yres,yblock,zblock;
-    unsigned long long int len = 1llu*array.block*array.ppd*array.ppd*array.narray;
+    int yblock,zblock;
+    int64_t len = (int64_t)array.block*array.ppd*array.ppd*array.narray;
     slab    = new Complx[len];
     slabHer = new Complx[len];
     //
@@ -368,13 +372,10 @@ void ZeldovichZ(BlockArray& array, Parameters& param, PowerSpectrum& Pk) {
         // We're going to do each pair of Y slabs separately.
         // Load the deltas and do the FFTs for each pair of planes
         printf(".."); fflush(stdout);
-        #pragma omp parallel
-        {  //begin parallel region
-            #pragma omp for private(yres) schedule(static,1)
-            for (yres=0;yres<array.block;yres++) {     
-                LoadPlane(array,param,Pk,yblock,yres,slab,slabHer);
-            }
-        }//End Parallel region
+        #pragma omp parallel for schedule(static,1)
+        for (int yres=0;yres<array.block;yres++) {     
+            LoadPlane(array,param,Pk,yblock,yres,slab,slabHer);
+        }
 
         // Now store it into the primary BlockArray.  
         // Can't openMP an I/O loop.
@@ -392,7 +393,7 @@ void ZeldovichZ(BlockArray& array, Parameters& param, PowerSpectrum& Pk) {
 // ===============================================================
 
 // We use a set of X-Y arrays of Complx numbers (ordered by A and Z).
-#define AZYX(_slab,_a,_z,_y,_x) _slab[(_x)+array.ppd*((_y)+array.ppd*((_a)+array.narray*(_z)))]
+#define AZYX(_slab,_a,_z,_y,_x) _slab[(int64_t)(_x)+array.ppd*((_y)+array.ppd*((_a)+array.narray*(_z)))]
 
 void LoadBlock(BlockArray& array, int yblock, int zblock, Complx *slab) {
     // We must be sure to access the block sequentially.
@@ -428,10 +429,10 @@ void ZeldovichXY(BlockArray& array, Parameters& param, FILE *output, FILE *denso
     int z, Complx *slab1, Complx *slab2, Complx *slab3, Complx *slab4,
     BlockArray& array, Parameters& param);
     Complx *slab;
-    unsigned long long int len = 1llu*array.block*array.ppd*array.ppd*array.narray;
+    int64_t len = (int64_t)array.block*array.ppd*array.ppd*array.narray;
     slab = new Complx[len];
     unsigned int a;
-    int x,yblock,y,zres,zblock,z;
+    int x,yblock,y,zblock,z;
     printf("Looping over Z: ");
     for (zblock=0;zblock<array.numblock;zblock++) {
         // We'll do one Z slab at a time
@@ -446,7 +447,7 @@ void ZeldovichXY(BlockArray& array, Parameters& param, FILE *output, FILE *denso
         // because we shifted the data by one location.
         // FLAW: this assumes PPD is even.
         y = array.ppd/2;
-        for (zres=0;zres<array.block;zres++) {
+        for (int zres=0;zres<array.block;zres++) {
             for (a=0;a<array.narray;a++) {
                 for (x=0;x<array.ppd;x++) AZYX(slab,a,zres,y,x) = 0.0;
             }
@@ -454,20 +455,17 @@ void ZeldovichXY(BlockArray& array, Parameters& param, FILE *output, FILE *denso
 
         // Now we want to do the Y & X inverse FFT.
         for (a=0;a<array.narray;a++) {
-            #pragma omp parallel
-            {
-                #pragma omp for private(zres) schedule(static,1)
-                for (zres=0;zres<array.block;zres++) {
-                    Inverse2dFFT(&(AZYX(slab,a,zres,0,0)),array.ppd);
-                }
-            }//End parallel region
+            #pragma omp parallel for schedule(static,1)
+            for (int zres=0;zres<array.block;zres++) {
+                Inverse2dFFT(&(AZYX(slab,a,zres,0,0)),array.ppd);
+            }
         }
 
         // Now write out these rows of [z][y][x] positions
         // Can't openMP an I/O loop.
         
 
-        for (zres=0;zres<array.block;zres++) {
+        for (int zres=0;zres<array.block;zres++) {
             z = zres+array.block*zblock;
             if (param.qoneslab<0||z==param.qoneslab) {
                 // We have the option to output only one z slab.
@@ -501,10 +499,13 @@ void load_eigmodes(Parameters &param){
     std::streampos size;
     size = eigf.tellg();
     eigf.seekg (0, std::ios::beg);
-    eigf.read((char*) &eig_vecs_ppd, sizeof(eig_vecs_ppd));
+    // Read as a 4-byte int, but store as a 8-byte int
+    int eig_vecs_ppd_32;
+    eigf.read((char*) &eig_vecs_ppd_32, sizeof(eig_vecs_ppd_32));
+    eig_vecs_ppd = (int64_t) eig_vecs_ppd_32;
     
     size_t nbytes = eig_vecs_ppd*eig_vecs_ppd*(eig_vecs_ppd/2 + 1)*4*sizeof(double);
-    if((size_t) size != nbytes + sizeof(eig_vecs_ppd)){
+    if((size_t) size != nbytes + sizeof(eig_vecs_ppd_32)){
         std::cerr << "[Error] Eigenmode file \"" << param.PLT_filename << "\" of size " << size
             << " did not match expected size " << nbytes << " from eig_vecs_ppd " << eig_vecs_ppd << ".\n";
         exit(1);
@@ -540,9 +541,18 @@ int main(int argc, char *argv[]) {
     // Two arrays for dens,x,y,z, two more for vx,vy,vz
     int narray = param.qPLT ? 4 : 2;
     memory = CUBE(param.ppd/1024.0)*narray*sizeof(Complx);
+
+#ifdef DISK
+    printf("Compiled with -DDISK; blocks will be buffered on disk.\n");
+    printf("Total (out-of-core) memory usage (GB): %5.3f\n", memory);
+    printf("Two slab (in-core) memory usage (GB): %5.3f\n", memory/param.numblock*2.0);
+    printf("Block file size (GB): %5.3f\n", memory/param.numblock/param.numblock);
+#else
+    printf("Not compiled with -DDISK; whole problem will reside in memory.\n");
     printf("Total memory usage (GB): %5.3f\n", memory);
     printf("Two slab memory usage (GB): %5.3f\n", memory/param.numblock*2.0);
-    printf("File sizes (GB): %5.3f\n", memory/param.numblock/param.numblock);
+    printf("Block size (GB): %5.3f\n", memory/param.numblock/param.numblock);
+#endif
 
     if (param.qdensity>0) {
         densoutput = fopen(param.density_filename,"w");

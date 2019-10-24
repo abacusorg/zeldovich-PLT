@@ -5,12 +5,13 @@ class BlockArray {
     Complx *arr;   // But this array may never be allocated!
 
 public:
-    int ppd, numblock, block;
+    int numblock, block;
+    int64_t ppd;  // Making ppd a 64-bit integer avoids trouble with ppd^3 int32_t overflow
     long long unsigned int narray;  // Make uint64 to avoid overflow in later calculations
     char TMPDIR[1024];
     int ramdisk;
     BlockArray(int _ppd, int _numblock, int _narray, char *_dir, int ramdisk) {
-        ppd = _ppd;
+        ppd = (int64_t) _ppd;
         numblock = _numblock;
         block = ppd/numblock;
         narray = _narray;
@@ -19,7 +20,7 @@ public:
         assert(ppd%2==0);    // PPD must be even, due to incomplete Nyquist code
         assert(numblock%2==0);    // Number of blocks must be even
         assert(ppd==numblock*block);   // We'd like the blocks to divide evenly
-        size = 1llu*ppd*ppd*ppd*narray;
+        size = ppd*ppd*ppd*narray;
 #ifndef DISK
         arr = new Complx[size];
 #elif defined DIRECTIO
@@ -27,6 +28,18 @@ public:
         diskbuffer = 1024*512;  // Magic number pulled from io_dio.cpp
         ramdisk = 0;
 #endif
+
+        // We parallelize over planes within a block.
+        // If there are fewer planes than threads; we're underutilizing the CPU!
+        // But it probably only matters for large problem sizes.
+        if(block < omp_get_num_threads() && ppd >= 10){
+            printf(R"(
+*** Note: the number of particles per block (%d) is fewer than the number of threads (%d),
+    so the CPU will be under-utilized.  You may wish to decrease ZD_NumBlock (%d) if memory
+    constraints allow.
+
+)", block, omp_get_num_threads(), numblock);
+        }
     }
     ~BlockArray() {
 #ifdef DISK
@@ -121,7 +134,7 @@ public:
         // Set up for reading or writing this block
         assert(yblock>=0&&yblock<numblock);
         assert(zblock>=0&&zblock<numblock);
-        IOptr = arr+(zblock*numblock+yblock)*(block*block*ppd*narray);
+        IOptr = arr+((int64_t)zblock*numblock+yblock)*(block*block*ppd*narray);
         return;
     }
     void bclose() { IOptr = NULL; return; }

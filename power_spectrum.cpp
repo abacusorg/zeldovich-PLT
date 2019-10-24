@@ -46,7 +46,7 @@ public:
             return retval;
         }
     }
-    // Do Romberg integration with up to 25 bisections.
+    // Do Romberg integration with up to MAXITER bisections.
     // Give a precision 'prec'.  Also return the estimated precision in 'obtprec'.
 
     #define MAXITER 32
@@ -169,11 +169,15 @@ public:
         } else {
             static bool already_warned = false;
             if (wavenumber > kmax && !already_warned) {
-                fprintf(stderr, "\n*** WARNING: power spectrum spline interpolation was requested\n"
-                                "    past the maximum k (%f) that was provided in the input power\n"
-                                "    spectrum file.  The extrapolation should be well-behaved, but\n"
-                                "    make sure that this was expected.  Provide a power spectrum\n"
-                                "    that goes to k=10 to get rid of this warning.\n", kmax);
+                fprintf(stderr, R"(
+*** WARNING: power spectrum spline interpolation was requested
+    past the maximum k (%f) that was provided in the input power
+    spectrum file.  The extrapolation should be well-behaved, but
+    make sure that this was expected.  Provide a power spectrum
+    that goes to at least k=10 (or higher if your k_Nyquist demands
+    it) to get rid of this warning.
+
+)", kmax);
                 already_warned = true;
             }
             return exp(this->val(log(wavenumber))-wavenumber*wavenumber*this->Pk_smooth2)*normalization;

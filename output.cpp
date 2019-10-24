@@ -44,7 +44,7 @@ BlockArray& array, Parameters& param) {
     //norm = 1e-2;
 
     char fn[1080];
-    sprintf(fn, "%s/ic_%d",param.output_dir,z*param.cpd/param.ppd);
+    sprintf(fn, "%s/ic_%ld",param.output_dir,z*param.cpd/param.ppd);
     //printf("z: %d goes goes to ic_%d /n", z, z*param.cpd/param.ppd);
     output = fopen(fn,"ab");
 
