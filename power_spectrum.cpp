@@ -36,12 +36,7 @@ public:
             // Use the analytic power law solution
             // See: http://nbviewer.jupyter.org/gist/lgarrison/7e41ee280c57554e256b834ac5c3f753
             double n = powerlaw_index;
-            double retval = 9*pow(R,-n-3)*pow(2,-n-1)/(M_PI*M_PI*(n-3));
-            if((int)round(n) % 2 == 0.)
-                retval *= -(1+n)*M_PI/(2*tgamma(2-n)*cos(M_PI*n/2));
-            else
-                retval *= sin(n*M_PI/2)*tgamma(n+2)/((n-1)*n);
-            
+            double retval = 9*pow(R,-n-3)/(2*M_PI*sqrt(M_PI)) * tgamma((3+n)/2.)/(tgamma((2-n)/2.)*(n-3)*(n-1));
             retval = sqrt(retval*normalization);
             return retval;
         }
