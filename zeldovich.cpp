@@ -229,6 +229,8 @@ eigenmode get_eigenmode(int kx, int ky, int kz, int64_t ppd, int qPLT){
 
 void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk, 
                 int yblock, int yres, Complx *slab, Complx *slabHer) {
+    // Note that this function is called from within a parallel for-loop over yres
+
     Complx D,F,G,H,f;
     Complx I(0.0,1.0);
     double k2;
@@ -504,14 +506,15 @@ void load_eigmodes(Parameters &param){
     eigf.read((char*) &eig_vecs_ppd_32, sizeof(eig_vecs_ppd_32));
     eig_vecs_ppd = (int64_t) eig_vecs_ppd_32;
     
-    size_t nbytes = eig_vecs_ppd*eig_vecs_ppd*(eig_vecs_ppd/2 + 1)*4*sizeof(double);
+    size_t nelem = eig_vecs_ppd*eig_vecs_ppd*(eig_vecs_ppd/2 + 1)*4;
+    size_t nbytes = nelem*sizeof(double);
     if((size_t) size != nbytes + sizeof(eig_vecs_ppd_32)){
         std::cerr << "[Error] Eigenmode file \"" << param.PLT_filename << "\" of size " << size
             << " did not match expected size " << nbytes << " from eig_vecs_ppd " << eig_vecs_ppd << ".\n";
         exit(1);
     }
     
-    eig_vecs = (double*) malloc(nbytes);
+    eig_vecs = new double[nelem];
     eigf.read((char*) eig_vecs, nbytes);
     
     eigf.close();
@@ -583,7 +586,7 @@ int main(int argc, char *argv[]) {
     // fclose(output);
     
     if(param.qPLT)
-        free(eig_vecs);
+        delete[] eig_vecs;
     
     return 0;
 }

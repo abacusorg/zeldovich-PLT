@@ -49,6 +49,9 @@ public:
     // in which case use version = 1 (but beware the phases will depend
     // on ZD_NumBlock)
     int version;
+
+    long long int UseModesFromNP;
+    int64_t UseModesFromPPD;
     
 
     int setup();
@@ -85,6 +88,7 @@ public:
         strcpy(ICFormat,""); // Illegal default
         ramdisk = 0;  // Legal default for most cases
         version = 1;  // All new ICs should use verison 2, but the default is 1 for backwards compatibility
+        UseModesFromNP = -1;
         
         // Read the paramater file values
         register_vars();
@@ -148,6 +152,7 @@ public:
         installscalar("ICFormat",ICFormat,MUST_DEFINE);
         installscalar("RamDisk",ramdisk,DONT_CARE);
         installscalar("ZD_Version",version,DONT_CARE);
+        installscalar("ZD_UseModesFrom",UseModesFromNP,DONT_CARE);
     }
 
 
@@ -166,14 +171,15 @@ int Parameters::setup() {
 )");
     }
     
-    double npcr = pow(np,1.0/3.0);
-    ppd = (long long int) floor(npcr+0.5);
-    if(ppd - npcr > .0001){
-        printf("ppd: %ld\n",ppd);
-        printf("npcr: %5.4f\n", npcr);
+    ppd = (int64_t) round(cbrt(np));
+    assert(ppd*ppd*ppd == np);
 
-        assert(ppd - npcr < .0001);
-    }
+    if(UseModesFromNP == -1)
+        UseModesFromNP = np;
+
+    UseModesFromPPD = (int64_t) round(cbrt(UseModesFromNP));
+    assert(UseModesFromPPD*UseModesFromPPD*UseModesFromPPD == UseModesFromNP);
+    assert(UseModesFromPPD >= ppd);
     
     // NumBlock is only modified in version 1
     if(version == 1){
