@@ -14,9 +14,6 @@
 class Header {
   protected:
     char comment[MAXCOMMENT];  // A general text field
-    virtual int assign_key(char *key, char *value) { return 0; }
-        // This will decide what the keys mean
-        // Must overload this function
 
   private:
     int commentsize;
@@ -100,48 +97,6 @@ class Header {
         strcpy(comment+commentsize,buffer);
         commentsize+=(size+1);
         fclose(fp);
-        return 0;
-    }
-
-    int load(char *input_filename) {
-        // Read the input parameter file and stuff it into the Parameter instance.
-        // Return 0 if all is well, 1 if this failed.
-        FILE *fp;
-        char line[1000],*key=NULL,*value=NULL;
-        char endcomment[100];
-        int incomment;
-        //
-        fp = fopen(input_filename,"r");
-        if (fp==NULL) {
-            fprintf(stderr,"File %s not found\n", input_filename); return 1;
-        }
-        incomment = 0; endcomment[0] = '\0';
-        //
-        while (fgets(line,MAXLINE,fp)!=NULL) {
-            line[MAXLINE-1]='\0'; line[MAXLINE-2]='\n';  // Truncate long lines
-            if (incomment) {
-                // We're in a comment.  Keep appending until we reach the end.
-                incomment = append_comment_line(line,endcomment);
-            } else {
-                // We're not in a comment.  Try to parse the line.
-                parseline(line,&key,&value);
-                // printf("%s = %s\n", key,value);
-                if (key==NULL||value==NULL) continue;  // Failed to parse. Skip.
-                if (strcmp(key,"comment")==0) {
-                    strncpy(endcomment,value,100);
-                    incomment = 1;
-                    continue;
-                }
-                // Otherwise, assign this key to a value
-                if (assign_key(key,value)) {
-                    // Failed to find a match.
-                    // For now, we throw an error for this
-                    // but one might not want to be this dramatic.
-                    fprintf(stderr,"Couldn't parse line: %s\n",line);
-                    return 1;
-                }
-            }
-        }
         return 0;
     }
 };

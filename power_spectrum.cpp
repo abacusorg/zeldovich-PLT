@@ -179,13 +179,15 @@ public:
         }
     }
 
-    double one_rand(int i) {
+    double one_rand(int64_t i) {
         return gsl_rng_uniform(rng[i]);
     }
-    Complx cgauss(double wavenumber, int rng) {
+    Complx cgauss(double wavenumber, int64_t rng) {
         // Return a gaussian complex deviate scaled to the sqrt of the power
         // Box-Muller, adapted from Numerical Recipes
         // If fixed_power is set, the complex deviate always has amplitude sqrt(P(k))
+        // rng tells us which of our ppd^2 RNGs to use
+
         double Pk = this->power(wavenumber);
         double phase1, phase2, r2;
         // printf("P(%f) = %g\n",wavenumber,Pk);

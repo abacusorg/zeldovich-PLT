@@ -10,7 +10,7 @@ public:
     long long unsigned int narray;  // Make uint64 to avoid overflow in later calculations
     char TMPDIR[1024];
     int ramdisk;
-    BlockArray(int _ppd, int _numblock, int _narray, char *_dir, int ramdisk) {
+    BlockArray(int _ppd, int _numblock, int _narray, char *_dir, int _ramdisk) {
         ppd = (int64_t) _ppd;
         numblock = _numblock;
         block = ppd/numblock;
@@ -21,12 +21,13 @@ public:
         assert(numblock%2==0);    // Number of blocks must be even
         assert(ppd==numblock*block);   // We'd like the blocks to divide evenly
         size = ppd*ppd*ppd*narray;
+        ramdisk = _ramdisk;  // just to silence the compiler; might be overriden below
+
 #ifndef DISK
         arr = new Complx[size];
 #elif defined DIRECTIO
         fileoffset = 0;
         diskbuffer = 1024*512;  // Magic number pulled from io_dio.cpp
-        ramdisk = 0;
 #endif
 
         // We parallelize over planes within a block.

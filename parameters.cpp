@@ -50,10 +50,6 @@ public:
     // on ZD_NumBlock)
     int version;
 
-    long long int UseModesFromNP;
-    int64_t UseModesFromPPD;
-    
-
     int setup();
     // Check against the defaults; complain if something is missing.
     // Setup the other variables
@@ -88,7 +84,6 @@ public:
         strcpy(ICFormat,""); // Illegal default
         ramdisk = 0;  // Legal default for most cases
         version = 1;  // All new ICs should use verison 2, but the default is 1 for backwards compatibility
-        UseModesFromNP = -1;
         
         // Read the paramater file values
         register_vars();
@@ -101,27 +96,18 @@ public:
             std::cout <<"Invalid Parameters given \n";
             exit(1);
         }
-
-        // Set up RNGs, one per plane per block, to support parallelism
-        const gsl_rng_type * T;
-        gsl_rng_env_setup();
-        T = gsl_rng_mt19937; //The mersene twister
-        int block = ppd/numblock;
-        rng = new gsl_rng *[block];
-        
-        //seed the rng. a seed of zero uses the current time
-        unsigned long int longseed = seed;
-        if (seed == 0){
-            longseed = time(0);
-            printf("Seed 0 will use current time %lu\n", longseed);
-        }
-        for (int i = 0; i < block; i++){
-            rng[i] = gsl_rng_alloc(T);
-            gsl_rng_set(rng[i], longseed+i);
-        }
     }
     ~Parameters() {
         inputstream->Close();
+
+        if(version != 1){
+            for(int64_t i = 0; i < ppd*ppd; i++)
+                gsl_rng_free(rng[i]);
+        } else {
+            for(int64_t i = 0; i < ppd/numblock; i++)
+                gsl_rng_free(rng[i]);
+        }
+        delete[] rng;
     }
 
     void register_vars(void) {
@@ -152,7 +138,6 @@ public:
         installscalar("ICFormat",ICFormat,MUST_DEFINE);
         installscalar("RamDisk",ramdisk,DONT_CARE);
         installscalar("ZD_Version",version,DONT_CARE);
-        installscalar("ZD_UseModesFrom",UseModesFromNP,DONT_CARE);
     }
 
 
@@ -168,18 +153,12 @@ int Parameters::setup() {
     This means that the output phases depend on the ZD_NumBlock tuning parameter,
     so version 1 should only be used for backwards compatibility.  Use ZD_Version = 2
     for new ICs.
+
 )");
     }
     
     ppd = (int64_t) round(cbrt(np));
     assert(ppd*ppd*ppd == np);
-
-    if(UseModesFromNP == -1)
-        UseModesFromNP = np;
-
-    UseModesFromPPD = (int64_t) round(cbrt(UseModesFromNP));
-    assert(UseModesFromPPD*UseModesFromPPD*UseModesFromPPD == UseModesFromNP);
-    assert(UseModesFromPPD >= ppd);
     
     // NumBlock is only modified in version 1
     if(version == 1){
@@ -216,14 +195,101 @@ int Parameters::setup() {
     
     if(qonemode)
         printf("one_mode: %d, %d, %d\n",one_mode[0],one_mode[1],one_mode[2]);
+
+    // Set up multiple RNGs to support parallelism and over-/down-sampling
+    
+    //seed the rng. a seed of zero uses the current time
+    unsigned long int longseed = seed;
+    if (seed == 0){
+        longseed = time(0);
+        printf("Seed 0 will use current time %lu\n", longseed);
+    }
+
+    if(version == 1){
+        int block = ppd/numblock;
+        rng = new gsl_rng*[block];
+
+        for (int i = 0; i < block; i++){
+            rng[i] = gsl_rng_alloc(gsl_rng_mt19937);
+            gsl_rng_set(rng[i], longseed+i);
+        }
+    } else {
+        // Allocate two per x-skewer (one forward, one reverse)
+        rng = new gsl_rng*[(int64_t)2*ppd*ppd];
+
+        /* We need 2*ppd^2 RNGs, so we need to come up with that many seeds.
+         A simple increment is dangerous because we sometimes increment the base seed
+         for suites of simulations.  Let's avoid sharing modes!
+         So we'll get the seeds as the output of an RNG seeded with the base seed.
+
+         Another quirk of meta-seeding: the first value of an RNG (or the value
+         before the first) is sometimes the seed itself.  So we'd better warm up
+         each meta RNG to avoid correlations!
+
+         But ppd^2 warm-ups can be a lot, so we want to parallelize, which means we need a
+         meta-meta RNG!
+        */
+
+#define NWARM 1000
+
+        gsl_rng *meta_meta_rng = gsl_rng_alloc(gsl_rng_taus2);
+        gsl_rng_set(meta_meta_rng, longseed);
+        // Warm up the RNG
+        for (int _k = 0; _k < NWARM; _k++)
+            gsl_rng_get(meta_meta_rng);
+
+        gsl_rng **meta_rng = new gsl_rng*[ppd];
+        for(int i = 0; i < ppd; i++){
+            meta_rng[i] = gsl_rng_alloc(gsl_rng_taus2);
+            gsl_rng_set(meta_rng[i], gsl_rng_get(meta_meta_rng));
+        }
+        
+        #pragma omp parallel for schedule(static)
+        for(int64_t i = 0; i < ppd; i++){
+            // Warm up the meta rng here, while we're in parallel
+            for (int _k = 0; _k < NWARM; _k++)
+                gsl_rng_get(meta_rng[i]);
+
+            for (int64_t j = 0; j < ppd/2; j++){
+                unsigned long int thisseed = gsl_rng_get(meta_rng[i]);
+                unsigned long int revseed  = gsl_rng_get(meta_rng[i]);
+                unsigned long int thisseed2 = gsl_rng_get(meta_rng[i]);
+                unsigned long int revseed2  = gsl_rng_get(meta_rng[i]);
+
+                printf("rng (%d,%d) seeds: %lu, %lu\n", i,j, thisseed, revseed);
+                printf("rng (%d,%d) seeds: %lu, %lu\n", i,ppd-1-j, thisseed2, revseed2);
+
+                // Tausworthe2 is nearly as good as MT and uses far less state
+                // Note: these numerous, small allocations will go way faster with tcmalloc
+                rng[i*2*ppd + 2*j] = gsl_rng_alloc(gsl_rng_taus2);
+                rng[i*2*ppd + 2*j + 1] = gsl_rng_alloc(gsl_rng_taus2);
+                gsl_rng_set(rng[i*2*ppd + 2*j], thisseed);
+                gsl_rng_set(rng[i*2*ppd + 2*j + 1], revseed);
+
+                rng[i*2*ppd + 2*(ppd-1-j)] = gsl_rng_alloc(gsl_rng_taus2);
+                rng[i*2*ppd + 2*(ppd-1-j) + 1] = gsl_rng_alloc(gsl_rng_taus2);
+                gsl_rng_set(rng[i*2*ppd + 2*(ppd-1-j)], thisseed2);
+                gsl_rng_set(rng[i*2*ppd + 2*(ppd-1-j) + 1], revseed2);
+                
+                for (int _k = 0; _k < NWARM; _k++){
+                    gsl_rng_get(rng[i*2*ppd + 2*j]);
+                    gsl_rng_get(rng[i*2*ppd + 2*j + 1]);
+                    gsl_rng_get(rng[i*2*ppd + 2*(ppd-j-1)]);
+                    gsl_rng_get(rng[i*2*ppd + 2*(ppd-j-1) + 1]);
+                }
+            }
+        }
+
+        for(int i = 0; i < ppd; i++)
+            gsl_rng_free(meta_rng[i]);
+        delete[] meta_rng;
+
+        gsl_rng_free(meta_meta_rng);
+    }
     
     return 0;
 }
 
-void Parameters::print(FILE *fp, const char *datatype) {
-    print(fp);
-    return;
-}
 void Parameters::print(FILE *fp) {
     // Print the results
     time_t t = time(0);

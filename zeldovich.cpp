@@ -57,9 +57,13 @@ v2.0-- The generation of modes from RNG has changed! Use "ZD_Version = 1" to get
 static double __dcube;
 #define CUBE(a) ((__dcube=(a))==0.0?0.0:__dcube*__dcube*__dcube)
 
-gsl_rng ** rng; //The random number generator
+gsl_rng ** rng; //The random number generators
+
+// The PLT eigenmodes
 double* eig_vecs;
 int64_t eig_vecs_ppd;
+
+// Global maxima of the particle displacements
 double max_disp[3];
 
 #include "parameters.cpp"
@@ -230,28 +234,39 @@ eigenmode get_eigenmode(int kx, int ky, int kz, int64_t ppd, int qPLT){
 void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk, 
                 int yblock, int yres, Complx *slab, Complx *slabHer) {
     // Note that this function is called from within a parallel for-loop over yres
+    putchar('\n');
 
     Complx D,F,G,H,f;
     Complx I(0.0,1.0);
     double k2;
     unsigned int a;
     int x,y,z, kx,ky,kz, xHer,yresHer,zHer;
+    int64_t ppd = array.ppd;
+
+    // These are the loop control variable that increment monotonically
+    // The logical x,y,z will reverse direction halfway through
+    int _x, _y, _z;
+
+
     double k2_cutoff = param.nyquist*param.nyquist/(param.k_cutoff*param.k_cutoff);
 
-    y = yres+yblock*array.block;
-    ky = y>array.ppd/2?y-array.ppd:y;        // Nyquist wrapping
+    _y = yres+yblock*array.block;
+    y = _y >= ppd/2 ? 3*ppd/2 - 1 - _y : _y;
+    ky = y>ppd/2?y-ppd:y;        // Nyquist wrapping
     yresHer = array.block-1-yres;         // Reflection
-    for (z=0;z<array.ppd;z++) {
-        kz = z>array.ppd/2?z-array.ppd:z;        // Nyquist wrapping
-        zHer = array.ppd-z; if (z==0) zHer=0;     // Reflection
-        for (x=0;x<array.ppd;x++) {
-            kx = x>array.ppd/2?x-array.ppd:x;        // Nyquist wrapping
-            xHer = array.ppd-x; if (x==0) xHer=0;    // Reflection
+    for (_z=0;_z<ppd;_z++) {
+        z = _z >= ppd/2 ? 3*ppd/2 - 1 - _z : _z;
+        kz = z>ppd/2?z-ppd:z;        // Nyquist wrapping
+        zHer = ppd-z; if (z==0) zHer=0;     // Reflection
+        for (_x=0;_x<ppd;_x++) {
+            x = _x >= ppd/2 ? 3*ppd/2 - 1 - _x : _x;
+            kx = x>ppd/2?x-ppd:x;        // Nyquist wrapping
+            xHer = ppd-x; if (x==0) xHer=0;    // Reflection
             // We will pack two complex arrays
             k2 = (kx*kx+ky*ky+kz*kz)*param.fundamental*param.fundamental;
             
             // Force Nyquist elements to zero, being extra careful with rounding
-            int kmax = array.ppd/2./param.k_cutoff+.5;
+            int kmax = ppd/2./param.k_cutoff+.5;
             if (abs(kx)==kmax || abs(kz)==kmax || abs(ky)==kmax) D = 0.0;
             // Force all elements with wavenumber above k_cutoff (nominally k_Nyquist) to zero
             else if (k2>=k2_cutoff) D = 0.0;
@@ -259,14 +274,22 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
             else if (param.qonemode && !(kx==param.one_mode[0] && ky==param.one_mode[1] && kz==param.one_mode[2])) D=0.0;
             // We deliberately only call cgauss() if we are inside the k_cutoff region
             // to get the same phase for a given k and cutoff region, no matter the ppd
-            else D = Pk.cgauss(sqrt(k2),yres);
+            else if (param.version != 1){
+                if(x < ppd/2)
+                    D = Pk.cgauss(sqrt(k2), y*2*ppd + 2*z);
+                else
+                    D = Pk.cgauss(sqrt(k2), y*2*ppd + 2*z + 1);
+                printf("Mode (y=%d,z=%d,x=%d) (ky=%d,kz=%d,kx=%d) = %g + i%g\n", y, z, x, ky, kz, kx, real(D), imag(D));
+            } else {
+                //D = Pk.cgauss(sqrt(k2),yres, 0, 0);
+            }
             // D = 0.1;    // If we need a known level
             
             k2 /= param.fundamental; // Get units of F,G,H right
             if (k2==0.0) k2 = 1.0;  // Avoid divide by zero
             // if (!(ky==5)) D=0.0;    // Pick out one plane
             
-            eigenmode e = get_eigenmode(kx, ky, kz, array.ppd, param.qPLT);
+            eigenmode e = get_eigenmode(kx, ky, kz, ppd, param.qPLT);
             double rescale = 1.;
             if(param.qPLTrescale){
                 double a_NL = 1./(1+param.PLT_target_z);
@@ -314,12 +337,12 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
     // half of it back.
     if (yblock==0&&yres==0) {
         // Copy the first half plane onto the second
-        for (z=0;z<array.ppd/2;z++) {
-            zHer = array.ppd-z; if (z==0) zHer=0;
+        for (z=0;z<ppd/2;z++) {
+            zHer = ppd-z; if (z==0) zHer=0;
             // Treat y=z=0 as a half line
-            int xmax = (z==0?array.ppd/2:array.ppd);
+            int xmax = (z==0?ppd/2:ppd);
             for (x=0;x<xmax;x++) {
-                xHer = array.ppd-x;if (x==0) xHer=0;
+                xHer = ppd-x;if (x==0) xHer=0;
                 for (a=0;a<array.narray;a++) {
                     AYZX(slab,a,yres,zHer,xHer) =
                     (AYZX(slabHer,a,yresHer,zHer,xHer));
@@ -332,8 +355,8 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
 
     // Now do the Z FFTs, since those data are contiguous
     for (a=0;a<array.narray;a++) {
-        InverseFFT_Yonly(&(AYZX(slab,a,yres,0,0)),array.ppd);
-        InverseFFT_Yonly(&(AYZX(slabHer,a,yresHer,0,0)),array.ppd);
+        InverseFFT_Yonly(&(AYZX(slab,a,yres,0,0)),ppd);
+        InverseFFT_Yonly(&(AYZX(slabHer,a,yresHer,0,0)),ppd);
     }
     return;
 }
@@ -538,7 +561,8 @@ int main(int argc, char *argv[]) {
         if (Pk.InitFromPowerLaw(param.Pk_powerlaw_index,param)!=0) return 1;
     }
     
-    param.append_file_to_comments(param.Pk_filename);
+    if(!Pk.is_powerlaw)
+        param.append_file_to_comments(param.Pk_filename);
 
     //param.print(stdout);   // Inform the command line user
     // Two arrays for dens,x,y,z, two more for vx,vy,vz
