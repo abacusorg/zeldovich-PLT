@@ -79,7 +79,7 @@ fftw_plan plan1d, plan2d;
 void Setup_FFTW(int n) {
 
     // For big n, this is slow enough to notice
-    if(n > 1024)
+    if(n >= 512)
         fprintf(stderr,"Creating FFTW plans...");
 
     fftw_complex *p;
@@ -88,7 +88,7 @@ void Setup_FFTW(int n) {
     plan2d = fftw_plan_dft_2d(n, n, p, p, +1, FFTW_PATIENT);
     delete []p;
 
-    if(n > 1024)
+    if(n >= 512)
         fprintf(stderr," done.\n");
 }
 
@@ -234,7 +234,6 @@ eigenmode get_eigenmode(int kx, int ky, int kz, int64_t ppd, int qPLT){
 void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk, 
                 int yblock, int yres, Complx *slab, Complx *slabHer) {
     // Note that this function is called from within a parallel for-loop over yres
-    putchar('\n');
 
     Complx D,F,G,H,f;
     Complx I(0.0,1.0);
@@ -251,15 +250,15 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
     double k2_cutoff = param.nyquist*param.nyquist/(param.k_cutoff*param.k_cutoff);
 
     _y = yres+yblock*array.block;
-    y = _y >= ppd/2 ? 3*ppd/2 - 1 - _y : _y;
+    y = _y >= ppd/2 ? 3*ppd/2 - 1 - _y : _y;  // reverse iteration direction
     ky = y>ppd/2?y-ppd:y;        // Nyquist wrapping
     yresHer = array.block-1-yres;         // Reflection
     for (_z=0;_z<ppd;_z++) {
-        z = _z >= ppd/2 ? 3*ppd/2 - 1 - _z : _z;
+        z = _z >= ppd/2 ? 3*ppd/2 - 1 - _z : _z;  // reverse iteration direction
         kz = z>ppd/2?z-ppd:z;        // Nyquist wrapping
         zHer = ppd-z; if (z==0) zHer=0;     // Reflection
         for (_x=0;_x<ppd;_x++) {
-            x = _x >= ppd/2 ? 3*ppd/2 - 1 - _x : _x;
+            x = _x >= ppd/2 ? 3*ppd/2 - 1 - _x : _x;  // reverse iteration direction
             kx = x>ppd/2?x-ppd:x;        // Nyquist wrapping
             xHer = ppd-x; if (x==0) xHer=0;    // Reflection
             // We will pack two complex arrays
@@ -279,7 +278,7 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
                     D = Pk.cgauss(sqrt(k2), y*2*ppd + 2*z);
                 else
                     D = Pk.cgauss(sqrt(k2), y*2*ppd + 2*z + 1);
-                printf("Mode (y=%d,z=%d,x=%d) (ky=%d,kz=%d,kx=%d) = %g + i%g\n", y, z, x, ky, kz, kx, real(D), imag(D));
+                //printf("Mode (y=%d,z=%d,x=%d) (ky=%d,kz=%d,kx=%d) = %g + i%g\n", y, z, x, ky, kz, kx, real(D), imag(D));
             } else {
                 //D = Pk.cgauss(sqrt(k2),yres, 0, 0);
             }
@@ -397,7 +396,7 @@ void ZeldovichZ(BlockArray& array, Parameters& param, PowerSpectrum& Pk) {
         // We're going to do each pair of Y slabs separately.
         // Load the deltas and do the FFTs for each pair of planes
         printf(".."); fflush(stdout);
-        #pragma omp parallel for schedule(static,1)
+        #pragma omp parallel for schedule(static)
         for (int yres=0;yres<array.block;yres++) {     
             LoadPlane(array,param,Pk,yblock,yres,slab,slabHer);
         }
@@ -450,14 +449,13 @@ void ZeldovichXY(BlockArray& array, Parameters& param, FILE *output, FILE *denso
     // Do the Y & X inverse FFT and output the results.
     // Do this one Z slab at a time; try to load the data in order.
     // Try to write the output file in z order
-    void WriteParticlesSlab(FILE *output, FILE *densoutput, 
-    int z, Complx *slab1, Complx *slab2, Complx *slab3, Complx *slab4,
-    BlockArray& array, Parameters& param);
+    
     Complx *slab;
     int64_t len = (int64_t)array.block*array.ppd*array.ppd*array.narray;
     slab = new Complx[len];
     unsigned int a;
     int x,yblock,y,zblock,z;
+
     printf("Looping over Z: ");
     for (zblock=0;zblock<array.numblock;zblock++) {
         // We'll do one Z slab at a time
@@ -480,7 +478,7 @@ void ZeldovichXY(BlockArray& array, Parameters& param, FILE *output, FILE *denso
 
         // Now we want to do the Y & X inverse FFT.
         for (a=0;a<array.narray;a++) {
-            #pragma omp parallel for schedule(static,1)
+            #pragma omp parallel for schedule(static)
             for (int zres=0;zres<array.block;zres++) {
                 Inverse2dFFT(&(AZYX(slab,a,zres,0,0)),array.ppd);
             }
@@ -595,6 +593,12 @@ int main(int argc, char *argv[]) {
     }
 
     Setup_FFTW(param.ppd);
+
+    // We're about to start the BlockArray, thus using the disk
+    // Remove any existing IC files
+    RemoveDirectories(param.output_dir);
+    CreateDirectories(param.output_dir);
+
     BlockArray array(param.ppd,param.numblock,narray,param.output_dir,param.ramdisk);    
     srandom(param.seed);
     ZeldovichZ(array, param, Pk);

@@ -1,6 +1,15 @@
 // #include "counts_in_cell.h"
 // CountCell *cic;
 
+#include <sys/stat.h>
+#include <dirent.h>
+#include <libgen.h>
+#include <unistd.h>
+
+#include <string.h>
+#include <limits.h>     /* PATH_MAX */
+#include <errno.h>
+
 double density_variance;
 #define YX(_slab,_y,_x) _slab[(_x)+array.ppd*(_y)]
 
@@ -118,4 +127,106 @@ BlockArray& array, Parameters& param) {
     }
     fclose(output);
     return;
+}
+
+// Recursively remove directories
+// Semantically similar to Python's shutil.rmtree()
+// from https://stackoverflow.com/questions/2256945/removing-a-non-empty-directory-programmatically-in-c-or-c
+int RemoveDirectories(const char *path){
+   DIR *d = opendir(path);
+   size_t path_len = strlen(path);
+   int r = -1;
+
+   if (d)
+   {
+      struct dirent *p;
+
+      r = 0;
+
+      while (!r && (p=readdir(d)))
+      {
+          int r2 = -1;
+          char *buf;
+          size_t len;
+
+          /* Skip the names "." and ".." as we don't want to recurse on them. */
+          if (!strcmp(p->d_name, ".") || !strcmp(p->d_name, ".."))
+          {
+             continue;
+          }
+
+          len = path_len + strlen(p->d_name) + 2; 
+          buf = (char *) malloc(len);
+          assert(buf != NULL);
+
+         struct stat statbuf;
+
+         snprintf(buf, len, "%s/%s", path, p->d_name);
+
+         if (!lstat(buf, &statbuf))  // stat or lstat?
+         {
+            if (S_ISDIR(statbuf.st_mode))
+            {
+               r2 = RemoveDirectories(buf);
+            }
+            else
+            {
+               r2 = unlink(buf);
+            }
+         }
+
+         free(buf);
+
+          r = r2;
+      }
+
+      closedir(d);
+   }
+
+   if (!r)
+   {
+      r = rmdir(path);
+   }
+
+   return r;
+}
+
+// A recursive mkdir function.
+// This is semantically similar to Python's os.makedirs()
+// from https://gist.github.com/JonathonReinhart/8c0d90191c38af2dcadb102c4e202950
+int CreateDirectories(const char *path){
+    const size_t len = strlen(path);
+    char _path[PATH_MAX];
+    char *p; 
+
+    errno = 0;
+
+    /* Copy string so its mutable */
+    if (len > sizeof(_path)-1) {
+        errno = ENAMETOOLONG;
+        return -1; 
+    }   
+    strcpy(_path, path);
+
+    /* Iterate the string */
+    for (p = _path + 1; *p; p++) {
+        if (*p == '/') {
+            /* Temporarily truncate */
+            *p = '\0';
+
+            if (mkdir(_path, S_IRWXU) != 0) {
+                if (errno != EEXIST)
+                    return -1; 
+            }
+
+            *p = '/';
+        }
+    }   
+
+    if (mkdir(_path, S_IRWXU) != 0) {
+        if (errno != EEXIST)
+            return -1;
+    }   
+
+    return 0;
 }

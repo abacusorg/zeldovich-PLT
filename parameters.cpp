@@ -230,12 +230,10 @@ int Parameters::setup() {
          meta-meta RNG!
         */
 
-#define NWARM 1000
-
         gsl_rng *meta_meta_rng = gsl_rng_alloc(gsl_rng_taus2);
         gsl_rng_set(meta_meta_rng, longseed);
         // Warm up the RNG
-        for (int _k = 0; _k < NWARM; _k++)
+        for (int _k = 0; _k < 100000; _k++)
             gsl_rng_get(meta_meta_rng);
 
         gsl_rng **meta_rng = new gsl_rng*[ppd];
@@ -247,7 +245,7 @@ int Parameters::setup() {
         #pragma omp parallel for schedule(static)
         for(int64_t i = 0; i < ppd; i++){
             // Warm up the meta rng here, while we're in parallel
-            for (int _k = 0; _k < NWARM; _k++)
+            for (int _k = 0; _k < 1000; _k++)
                 gsl_rng_get(meta_rng[i]);
 
             for (int64_t j = 0; j < ppd/2; j++){
@@ -256,8 +254,8 @@ int Parameters::setup() {
                 unsigned long int thisseed2 = gsl_rng_get(meta_rng[i]);
                 unsigned long int revseed2  = gsl_rng_get(meta_rng[i]);
 
-                printf("rng (%d,%d) seeds: %lu, %lu\n", i,j, thisseed, revseed);
-                printf("rng (%d,%d) seeds: %lu, %lu\n", i,ppd-1-j, thisseed2, revseed2);
+                //printf("rng (%d,%d) seeds: %lu, %lu\n", i,j, thisseed, revseed);
+                //printf("rng (%d,%d) seeds: %lu, %lu\n", i,ppd-1-j, thisseed2, revseed2);
 
                 // Tausworthe2 is nearly as good as MT and uses far less state
                 // Note: these numerous, small allocations will go way faster with tcmalloc
@@ -271,7 +269,8 @@ int Parameters::setup() {
                 gsl_rng_set(rng[i*2*ppd + 2*(ppd-1-j)], thisseed2);
                 gsl_rng_set(rng[i*2*ppd + 2*(ppd-1-j) + 1], revseed2);
                 
-                for (int _k = 0; _k < NWARM; _k++){
+                // At this point, the seeds should have high entropy, so just do a little bit of warmup
+                for (int _k = 0; _k < 10; _k++){
                     gsl_rng_get(rng[i*2*ppd + 2*j]);
                     gsl_rng_get(rng[i*2*ppd + 2*j + 1]);
                     gsl_rng_get(rng[i*2*ppd + 2*(ppd-j-1)]);

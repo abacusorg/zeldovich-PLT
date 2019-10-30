@@ -1,0 +1,23 @@
+# An example zeldovich parameter file.
+# See the README for parameter descriptions
+
+BoxSize = 720
+CPD = 512
+ICFormat = "RVdoubleZel"
+InitialConditionsDirectory = "/mnt/nvme1/lgarrison/ic_tests/baseline"
+InitialRedshift = 49
+NP = 134217728
+ZD_NumBlock = 8
+ZD_PLT_filename = "./eigmodes128"
+ZD_PLT_target_z = 5
+ZD_Pk_powerlaw_index = -2.123
+ZD_Pk_norm = 8.0
+ZD_Pk_scale = 1.0
+ZD_Pk_sigma = 0.0210839935761
+ZD_Pk_smooth = 0.0
+ZD_Seed = 12346
+ZD_k_cutoff = 1.0
+ZD_qPLT = 0
+ZD_qPLT_rescale = 0
+ZD_qPk_fix_to_mean = 0
+ZD_Version = 2

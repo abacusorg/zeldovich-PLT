@@ -30,10 +30,7 @@ zeldovich.o: zeldovich.cpp
 rng_test: rng_test.cpp
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $^ -o $@ $(LIBS)
 
-run_rng_test: rng_test
-	@./rng_test | cmp rng_test.out - && (echo 'Passed RNG test.') || (echo 'Error: your platform did not produce the expected RNG values, and may thus generate IC files with unexpected phases.' ; exit 1)
-
-.PHONY: all clean distclean run_rng_test default
+.PHONY: all clean distclean default
 clean:
 	$(MAKE) -C ParseHeader $@
 	$(RM) *.o *.gch *~
