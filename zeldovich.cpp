@@ -17,8 +17,10 @@ v1.6-- Support for "oversampled" simulations (same modes at different PPD) via t
 
 v1.7-- Support for PLT eigenmodes and rescaling
 
-v2.0-- The generation of modes from RNG has changed! Use "ZD_Version = 1" to get the old phases
-(but beware version 1 phases depend on ZD_NumBlock).
+v2.0-- Support for oversampling with and without new power.
+       N.B. The generation of modes from RNG has changed!
+       Use "ZD_Version = 1" to get the old phases
+       (but beware version 1 phases depend on ZD_NumBlock).
 */
 
 #define VERSION "zeldovich_v2.0"
@@ -277,10 +279,9 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
                 if(x < ppd/2)
                     D = Pk.cgauss(sqrt(k2), y*2*ppd + 2*z);
                 else
-                    D = Pk.cgauss(sqrt(k2), y*2*ppd + 2*z + 1);
-                //printf("Mode (y=%d,z=%d,x=%d) (ky=%d,kz=%d,kx=%d) = %g + i%g\n", y, z, x, ky, kz, kx, real(D), imag(D));
+                    D = Pk.cgauss(sqrt(k2), y*2*ppd + 2*z + 1);  // +1: use the reverse RNG
             } else {
-                //D = Pk.cgauss(sqrt(k2),yres, 0, 0);
+                D = Pk.cgauss(sqrt(k2),yres);
             }
             // D = 0.1;    // If we need a known level
             
@@ -596,7 +597,7 @@ int main(int argc, char *argv[]) {
 
     // We're about to start the BlockArray, thus using the disk
     // Remove any existing IC files
-    RemoveDirectories(param.output_dir);
+    CleanDirectory(param.output_dir);
     CreateDirectories(param.output_dir);
 
     BlockArray array(param.ppd,param.numblock,narray,param.output_dir,param.ramdisk);    

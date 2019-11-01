@@ -33,7 +33,7 @@ public:
         // We parallelize over planes within a block.
         // If there are fewer planes than threads; we're underutilizing the CPU!
         // But it probably only matters for large problem sizes.
-        if(block < omp_get_num_threads() && ppd >= 10){
+        if(block < omp_get_num_threads() && ppd >= 512){
             printf(R"(
 *** Note: the number of particles per block (%d) is fewer than the number of threads (%d),
     so the CPU will be under-utilized.  You may wish to decrease ZD_NumBlock (%d) if memory

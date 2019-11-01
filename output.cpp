@@ -129,66 +129,50 @@ BlockArray& array, Parameters& param) {
     return;
 }
 
-// Recursively remove directories
-// Semantically similar to Python's shutil.rmtree()
-// from https://stackoverflow.com/questions/2256945/removing-a-non-empty-directory-programmatically-in-c-or-c
-int RemoveDirectories(const char *path){
-   DIR *d = opendir(path);
-   size_t path_len = strlen(path);
-   int r = -1;
+// Remove files named ic_* and zeldovich.* from the current directory
+int CleanDirectory(const char *path){
+    DIR *d = opendir(path);
+    size_t path_len = strlen(path);
+    int r = -1;
 
-   if (d)
-   {
-      struct dirent *p;
+    if (d){
+        struct dirent *p;
 
-      r = 0;
+        r = 0;
 
-      while (!r && (p=readdir(d)))
-      {
-          int r2 = -1;
-          char *buf;
-          size_t len;
+        while (!r && (p=readdir(d))){
+            int r2 = -1;
+            char *buf;
+            size_t len;
 
-          /* Skip the names "." and ".." as we don't want to recurse on them. */
-          if (!strcmp(p->d_name, ".") || !strcmp(p->d_name, ".."))
-          {
-             continue;
-          }
-
-          len = path_len + strlen(p->d_name) + 2; 
-          buf = (char *) malloc(len);
-          assert(buf != NULL);
-
-         struct stat statbuf;
-
-         snprintf(buf, len, "%s/%s", path, p->d_name);
-
-         if (!lstat(buf, &statbuf))  // stat or lstat?
-         {
-            if (S_ISDIR(statbuf.st_mode))
-            {
-               r2 = RemoveDirectories(buf);
+            /* Only process our target file names */
+            if (strncmp(p->d_name, "ic_", 3) && strncmp(p->d_name, "zeldovich.", 10)){
+                continue;
             }
-            else
-            {
-               r2 = unlink(buf);
+
+            len = path_len + strlen(p->d_name) + 2; 
+            buf = (char *) malloc(len);
+            assert(buf != NULL);
+
+            struct stat statbuf;
+
+            snprintf(buf, len, "%s/%s", path, p->d_name);
+
+            if (!lstat(buf, &statbuf)){  // stat or lstat?
+                if (!S_ISDIR(statbuf.st_mode)){
+                    r2 = unlink(buf);
+                }
             }
-         }
 
-         free(buf);
+            free(buf);
 
-          r = r2;
-      }
+            r = r2;
+        }
 
-      closedir(d);
-   }
+        closedir(d);
+    }
 
-   if (!r)
-   {
-      r = rmdir(path);
-   }
-
-   return r;
+    return r;
 }
 
 // A recursive mkdir function.
@@ -201,7 +185,7 @@ int CreateDirectories(const char *path){
 
     errno = 0;
 
-    /* Copy string so its mutable */
+    /* Copy string so it is mutable */
     if (len > sizeof(_path)-1) {
         errno = ENAMETOOLONG;
         return -1; 

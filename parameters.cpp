@@ -101,7 +101,7 @@ public:
         inputstream->Close();
 
         if(version != 1){
-            for(int64_t i = 0; i < ppd*ppd; i++)
+            for(int64_t i = 0; i < 2*ppd*ppd; i++)
                 gsl_rng_free(rng[i]);
         } else {
             for(int64_t i = 0; i < ppd/numblock; i++)
@@ -253,9 +253,6 @@ int Parameters::setup() {
                 unsigned long int revseed  = gsl_rng_get(meta_rng[i]);
                 unsigned long int thisseed2 = gsl_rng_get(meta_rng[i]);
                 unsigned long int revseed2  = gsl_rng_get(meta_rng[i]);
-
-                //printf("rng (%d,%d) seeds: %lu, %lu\n", i,j, thisseed, revseed);
-                //printf("rng (%d,%d) seeds: %lu, %lu\n", i,ppd-1-j, thisseed2, revseed2);
 
                 // Tausworthe2 is nearly as good as MT and uses far less state
                 // Note: these numerous, small allocations will go way faster with tcmalloc

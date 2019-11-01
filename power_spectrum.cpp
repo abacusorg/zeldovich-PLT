@@ -186,7 +186,7 @@ public:
         // Return a gaussian complex deviate scaled to the sqrt of the power
         // Box-Muller, adapted from Numerical Recipes
         // If fixed_power is set, the complex deviate always has amplitude sqrt(P(k))
-        // rng tells us which of our ppd^2 RNGs to use
+        // rng tells us which of our 2*ppd^2 RNGs to use
 
         double Pk = this->power(wavenumber);
         double phase1, phase2, r2;

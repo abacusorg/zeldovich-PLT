@@ -2,11 +2,11 @@
 # See the README for parameter descriptions
 
 BoxSize = 720
-CPD = 512
+CPD = 128
 ICFormat = "RVdoubleZel"
-InitialConditionsDirectory = "/mnt/nvme1/lgarrison/ic_tests/baseline"
+InitialConditionsDirectory = "/mnt/ceph/users/lgarrison/ic_tests/baseline"
 InitialRedshift = 49
-NP = 134217728
+NP = 16777216
 ZD_NumBlock = 8
 ZD_PLT_filename = "./eigmodes128"
 ZD_PLT_target_z = 5

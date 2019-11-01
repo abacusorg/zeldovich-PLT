@@ -13,7 +13,7 @@ PARSEHEADER_LIBS ?= -L ParseHeader -lparseheader
 GSL_LIBS ?= $(shell gsl-config --libs)
 GSL_CPPFLAGS ?= $(shell gsl-config --cflags)
 
-CPPFLAGS += -DDISK $(TCMALLOC_CPPFLAGS) $(THREAD_CPPFLAGS) $(PARSEHEADER_CPPFLAGS) $(GSL_CPPFLAGS)
+CPPFLAGS +=$(TCMALLOC_CPPFLAGS) $(THREAD_CPPFLAGS) $(PARSEHEADER_CPPFLAGS) $(GSL_CPPFLAGS) -DDISK
 
 LIBS += $(TCMALLOC_LIBS) $(PARSEHEADER_LIBS) -lfftw3 $(GSL_LIBS) -lstdc++
 
@@ -27,9 +27,6 @@ zeldovich.o: zeldovich.cpp
 
 -include zeldovich.d
 
-rng_test: rng_test.cpp
-	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $^ -o $@ $(LIBS)
-
 .PHONY: all clean distclean default
 clean:
 	$(MAKE) -C ParseHeader $@
@@ -37,7 +34,7 @@ clean:
 
 distclean: clean
 	$(MAKE) -C ParseHeader $@
-	$(RM) zeldovich rng_test *.d
+	$(RM) zeldovich *.d
 
 ifndef HAVE_COMMON_MK
 ParseHeader: ParseHeader/libparseheader.a
