@@ -4,7 +4,7 @@
 BoxSize = 720
 CPD = 128
 ICFormat = "RVdoubleZel"
-InitialConditionsDirectory = "/mnt/ceph/users/lgarrison/ic_tests/baseline"
+InitialConditionsDirectory = "/mnt/ceph/users/lgarrison/ic_tests/new_v1"
 InitialRedshift = 49
 NP = 16777216
 ZD_NumBlock = 8
@@ -20,4 +20,4 @@ ZD_k_cutoff = 1.0
 ZD_qPLT = 0
 ZD_qPLT_rescale = 0
 ZD_qPk_fix_to_mean = 0
-ZD_Version = 2
+ZD_Version = 1

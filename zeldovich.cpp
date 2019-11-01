@@ -250,17 +250,18 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
 
 
     double k2_cutoff = param.nyquist*param.nyquist/(param.k_cutoff*param.k_cutoff);
+    int ver = param.version;
 
     _y = yres+yblock*array.block;
-    y = _y >= ppd/2 ? 3*ppd/2 - 1 - _y : _y;  // reverse iteration direction
+    y = ver != 1 && _y >= ppd/2 ? 3*ppd/2 - 1 - _y : _y;  // reverse iteration
     ky = y>ppd/2?y-ppd:y;        // Nyquist wrapping
     yresHer = array.block-1-yres;         // Reflection
     for (_z=0;_z<ppd;_z++) {
-        z = _z >= ppd/2 ? 3*ppd/2 - 1 - _z : _z;  // reverse iteration direction
+        z = ver != 1 && _z >= ppd/2 ? 3*ppd/2 - 1 - _z : _z;  // reverse iteration
         kz = z>ppd/2?z-ppd:z;        // Nyquist wrapping
         zHer = ppd-z; if (z==0) zHer=0;     // Reflection
         for (_x=0;_x<ppd;_x++) {
-            x = _x >= ppd/2 ? 3*ppd/2 - 1 - _x : _x;  // reverse iteration direction
+            x = ver != 1 &&_x >= ppd/2 ? 3*ppd/2 - 1 - _x : _x;  // reverse iteration
             kx = x>ppd/2?x-ppd:x;        // Nyquist wrapping
             xHer = ppd-x; if (x==0) xHer=0;    // Reflection
             // We will pack two complex arrays
