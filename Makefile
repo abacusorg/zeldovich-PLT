@@ -5,7 +5,7 @@ ROOT_DIR := ..
 CXX ?= g++
 # Set DISK if you want to run the big BlockArray explicitly out of core.
 # Set -DDIRECTIO and -I../Convolution if you want to use lib_dio
-CXXFLAGS ?= -O3 -fopenmp -march=native 
+CXXFLAGS ?= -O3 -fopenmp -march=native -std=c++11
 CXXFLAGS += -Wall
 PARSEHEADER_CPPFLAGS ?= -I ParseHeader
 PARSEHEADER_LIBS ?= -L ParseHeader -lparseheader

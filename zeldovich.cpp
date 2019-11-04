@@ -59,7 +59,7 @@ v2.0-- Support for oversampling with and without new power.
 static double __dcube;
 #define CUBE(a) ((__dcube=(a))==0.0?0.0:__dcube*__dcube*__dcube)
 
-gsl_rng ** rng; //The random number generators
+gsl_rng **v1rng; //The random number generators for the deprecated ZD_Version=1
 
 // The PLT eigenmodes
 double* eig_vecs;

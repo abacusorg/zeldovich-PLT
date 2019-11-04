@@ -83,7 +83,7 @@ public:
         k_cutoff = 1.; // Legal default (corresponds to k_nyquist)
         strcpy(ICFormat,""); // Illegal default
         ramdisk = 0;  // Legal default for most cases
-        version = 1;  // All new ICs should use verison 2, but the default is 1 for backwards compatibility
+        version = 1;  // All new ICs should use verison 2 (default), but version 1 is available for backwards compatibility
         
         // Read the paramater file values
         register_vars();
@@ -207,11 +207,11 @@ int Parameters::setup() {
 
     if(version == 1){
         int block = ppd/numblock;
-        rng = new gsl_rng*[block];
+        v1rng = new gsl_rng*[block];
 
         for (int i = 0; i < block; i++){
-            rng[i] = gsl_rng_alloc(gsl_rng_mt19937);
-            gsl_rng_set(rng[i], longseed+i);
+            v1rng[i] = gsl_rng_alloc(gsl_rng_mt19937);
+            gsl_rng_set(v1rng[i], longseed+i);
         }
     } else {
         // Allocate two per x-skewer (one forward, one reverse)

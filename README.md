@@ -7,14 +7,16 @@ https://github.com/abacusorg/zeldovich-PLT
 
 
 ## Overview
-This code generates Zel'dovich approximation (ZA) initial conditions (i.e. first-order Lagrangian perturbation theory) for cosmological N-body simulations, optionally applying particle linear theory (PLT)
+This code generates Zel'dovich approximation (ZA) initial conditions (i.e. first-order Lagrangian perturbation
+theory) for cosmological N-body simulations, optionally applying particle linear theory (PLT)
 corrections.  This code does not provide second-order ICs (2LPT), but one can use these ICs with the
 config-space 2LPT detailed in [Garrison et al. (2016)](https://arxiv.org/abs/1605.02333).
+This is the primary IC generator used by the Abacus N-body code.
 
 If you do not intend to use the config-space 2LPT, then it's better to use a Fourier-space 2LPT
 code (e.g. [2LPTic](http://cosmo.nyu.edu/roman/2LPT/)) than to rely on ZA, even with PLT corrections.
 
-This code supports two types of PLT corrections: (1) PLT eigenmodes, and (2) rescaling.  Both corrections are most important on small scales (approaching, e.g., k<sub>Nyquist</sub>/4).
+This code supports two types of PLT corrections: (1) PLT eigenmodes, and (2) rescaling.  Both corrections are most important on small scales (where "small" is defined by the mean interparticle separation, i.e. k<sub>Nyquist</sub>).
 
 1. PLT eigenmodes (`ZD_qPLT`) initializes the simulation in the correct eigenmodes for a particle lattice.  This eliminates transients that arise due to the common assumption that the particle system obeys the continuum modes.
 
@@ -24,19 +26,24 @@ This code does not presently support glass initial conditions, only particle lat
 
 The code uses double precision internally, but you can set output format to single or double precision (see the `ICFormat` option).
 
-The code can run small problems in memory, but it can also operate out-of-core to support large problems. Set the `-DDISK` option in the Makefile to turn this on.
+The code can run small problems in memory, but it has an efficient scheme for buffering state on disk to support massive problems (100s of billions of particles). Set the `-DDISK` option in the Makefile to turn this on.
 
 ## Usage
-Build with `make`, and run with `./zeldovich <param_file>`.  An example parameter file (`example.par`) is provided, and all of the options are listed in `parameter.cpp`.  See the "Parameter file options" section below for detailed descriptions of the options.
+Build with `make`, and run with `./zeldovich <param_file>`.  An example parameter file (`example.par`) is provided, and all of the options are detailed in the "Parameter file options" section below.
 
 ### Dependencies
-Zeldovich-PLT needs FFTW 3 and GSL, and the ParseHeader library needs flex and Bison >= 3.0.  The code has been tested with g++, but it should work with the Intel compilers as well.
+Zeldovich-PLT needs FFTW 3 and GSL, and the ParseHeader library needs flex and Bison >= 3.0.  The code has been tested with the GNU and Intel compilers.  Initialization of the RNG for large problems will go faster if you link a thread-aware memory allocator like tcmalloc or tbbmalloc.
 
-### Convergence testing
-This code supports testing N-body simulation convergence at linear order by increasing particle density ("oversampling")
-for a fixed set of modes.  One should keep fixed the starting redshift, volume, softening length, RNG seed, etc. when doing this kind of convergence testing.
+### Oversampling Modes
+This code supports generating phase-matched ICs with different particle densities.  Simply increase the particle number `NP` while holding other parameters fixed.  If desired, the `ZD_k_cutoff` parameter may be utilized to limit the oversampled ICs to the same modes as the original ICs without including new power past the original k<sub>Nyquist</sub>.  Otherwise, each set of ICs will include power out to their respective k<sub>Nyquist</sub> spheres.
 
-To generate oversampled initial conditions (for example, 128<sup>3</sup> initial conditions that sample the same modes as 64<sup>3</sup> initial conditions), invoke the code twice: once with NP = 64<sup>3</sup> to generate the fiducial simulation, then again with NP = 128<sup>3</sup> and `ZD_k_cutoff = 2` to generate the oversampled.  This truncates the modes in the 128<sup>3</sup> sim at k<sub>Nyquist</sub>/2, and ensures the RNG is appropriately synchronized.  **Important**: do not change `ZD_NumBlock` between invocations!
+For example, to generate 128<sup>3</sup> oversampled initial conditions that sample the same modes as 64<sup>3</sup> initial conditions, invoke the code twice: once with NP = 64<sup>3</sup> to generate the fiducial simulation, then again with NP = 128<sup>3</sup> to generate the oversampled.  The second invocation can include `ZD_k_cutoff = 2` if one does not want new power.
+
+If `ZD_Version=1`, then `ZD_NumBlock` also affects the IC phases.  This is not the case in version 2 or later.  But if using `ZD_Version = 1`, then one must take care to not change `ZD_NumBlock` between invocations.
+
+`ZD_Version=1` also only supported the flavor of oversampling that used `ZD_k_cutoff` (i.e. no new power).  Since version 2, `ZD_k_cutoff` is optional when oversampling.
+
+This code doesn't support true zoom-in/zoom-out simulations where the box size can be changed, a la Panphasia.
 
 ## Citation
 If you use this code, please cite [Garrison et al. (2016)](https://arxiv.org/abs/1605.02333).
@@ -134,9 +141,12 @@ complex FFTs instead of two.
 We provide a precompted set of 128<sup>3</sup> numerical eigenmodes with this code.
 The code does linear interpolation if a finer FFT mesh is being used.
 
+
 ## Parameter file options
 `ZD_Seed`: *integer*  
-The random number seed.  Both this variable and `ZD_NumBlock` affect the output phases.
+The random number seed.  This variable determines the output phases.
+If `ZD_Version=1`, `ZD_NumBlock` also affects
+the output phases.  This is not the case in version 2.
 
 `ZD_NumBlock`: *integer*  
 This is the number of blocks to break the FFT
@@ -166,10 +176,20 @@ and `NumBlock` of 16 will require 32 GB of RAM and each block will
 be 1024 MB.  For a `8192^3` simulation, `32*NP` is 16 TB and `NumBlock`
 of `256` will require 128 GB of RAM and a block size of 256 MB.
 
-If `ZD_k_cutoff != 1`, then the actual `ZD_NumBlock` will be `ZD_NumBlock*ZD_k_cutoff`.
-See `ZD_k_cutoff` for details.
+If `ZD_Version=1`, then if `ZD_k_cutoff != 1`, then the actual `ZD_NumBlock`
+will be `ZD_NumBlock*ZD_k_cutoff`. See `ZD_k_cutoff` for details.
 
-Both this variable and `ZD_Seed` affect the output phases.
+If `ZD_Version=1`, both this variable and `ZD_Seed` affect the output phases.
+This is not the case since version 2.
+
+`ZD_Version`: *int*
+The version of the algorithm for generating modes from random numbers.
+The current version is 2, which is the default.  New ICs should
+always use `ZD_Version=2`, but `ZD_Version=1` is available for backwards
+compatibility.
+
+If `ZD_Version=1`, then the output phases depend on both `ZD_Seed`
+and `ZD_NumBlock`.
 
 `ZD_Pk_filename`: *string*  
 The file name of the input power spectrum.
@@ -258,7 +278,9 @@ at this redshift.  Recall that modes on the grid (mostly) grow more slowly than 
 This redshift should be in a quasi-linear regime where linear theory is still mostly valid, e.g. `z~5`.
 
 `ZD_k_cutoff`: *double*  
-The wavenumber above which not to input any power, expressed such that `k_max = k_Nyquist / k_cutoff`, e.g. `ZD_k_cutoff = 2` means we null out modes above half-Nyquist.  Non-whole numbers like 1.5 are allowed.  This is useful for doing convergence tests, e.g. run once with `PPD=64` and `ZD_k_cutoff = 1`, and again with `PPD=128` and `ZD_k_cutoff = 2`.  This will produce two boxes with the exact same modes (although the PLT corrections will be slightly different), but the second box's modes are oversampled by a factor of two.  To keep the random number generation synchronized between the two boxes (fixed number of particle planes per block), `ZD_NumBlock` is increased by a factor of `ZD_k_cutoff`.
+The wavenumber above which not to generate any power, expressed such that `k_max = k_Nyquist / k_cutoff`, e.g. `ZD_k_cutoff = 2` means we null out modes above half-Nyquist.  Fractional numbers like 1.5 are allowed.  This is useful for doing convergence tests, e.g. run once with `PPD=64` and `ZD_k_cutoff = 1`, and again with `PPD=128` and `ZD_k_cutoff = 2`.  This will produce two boxes with the exact same modes (although the PLT corrections will be slightly different), but the second box's modes are oversampled by a factor of two.
+
+If `ZD_Version=1`, then to keep the random number generation synchronized between the two boxes (fixed number of particle planes per block), `ZD_NumBlock` is increased by a factor of `ZD_k_cutoff`.  So do not change `ZD_NumBlock` between invocations in version 1!  Version 2 does not suffer from this limitation.
 
 `BoxSize`: *double*  
 This is the box size, probably in Mpc or h<sup>-1</sup>Mpc.  The zeldovich code only cares about the units to the extent that they should match the units in the power spectrum file.  See `ZD_Pk_scale` for further discussion.
@@ -287,7 +309,7 @@ Valid options are: `RVZel`, `RVdoubleZel`, or `Zeldovich`.
 One should use one the `RV` options if `ZD_qPLT` is set, because the velocities have been explicitly computed in Fourier space.
 
 All displacements are comoving displacements in the same units as `BoxSize`, and the velocities are comoving redshift-space displacements (same units as `BoxSize`).
-To get to physical velocities from comoving redshift-space displacements, multiply by a*H(z).
+To get to proper velocities from comoving redshift-space displacements, multiply by a\*H(z).
 
 The comoving positions of the initial lattice (in unit-box units where the domain is [0,1)) are simply given by
 ```c++
