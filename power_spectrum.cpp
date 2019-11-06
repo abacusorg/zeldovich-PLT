@@ -179,30 +179,96 @@ public:
         }
     }
 
-    double one_rand(int64_t i) {
-        return gsl_rng_uniform(rng[i]);
-    }
-    Complx cgauss(double wavenumber, int64_t rng) {
-        // Return a gaussian complex deviate scaled to the sqrt of the power
-        // Box-Muller, adapted from Numerical Recipes
-        // If fixed_power is set, the complex deviate always has amplitude sqrt(P(k))
-        // rng tells us which of our 2*ppd^2 RNGs to use
+    template <int Ver>
+    double one_rand(int64_t i);
 
-        double Pk = this->power(wavenumber);
-        double phase1, phase2, r2;
-        // printf("P(%f) = %g\n",wavenumber,Pk);
-        do { 
-            phase1 = one_rand(rng)*2.0-1.0;
-            phase2 = one_rand(rng)*2.0-1.0;
-            r2 = phase1*phase1+phase2*phase2;
-        } while (!(r2<1.0&&r2>0.0));
-        if (fixed_power){
-            r2 = sqrt(Pk/r2);
-        } else {
-            r2 = sqrt(-Pk*log(r2)/r2);   // Drop the factor of 2, so these Gaussians
-                                         // have variance of 1/2.
-        }
-        // printf("cgauss: %f %f\n", phase1*r2, phase2*r2);
-        return Complx(phase1*r2,phase2*r2);
-    }
+    template <int Ver>
+    Complx cgauss(double wavenumber, int64_t rng);
 };
+
+
+// ZD_Version 1
+template <>
+double PowerSpectrum::one_rand<1>(int64_t i) {
+    return gsl_rng_uniform(v1rng[i]);
+}
+
+// ZD_Version 2
+// Returns a random double in (0,1]
+template <>
+double PowerSpectrum::one_rand<2>(int64_t i) {
+
+    uint64_t r = v2rng[i]();
+
+    // Can't return 0!  That will immediately break the log in Box-Muller
+    // But 1.0 is a valid value, so we can just add 1 to everything
+    // thus shifting the domain from [0,1) to (0,1]
+    // But first check if adding 1 would overflow
+    if(r == UINT64_MAX)
+        return 1.;
+
+    // Is (0,1] the correct range, or (0,1)?
+    // Consider cos(2*pi*r), where we want the full period to be sampled.
+    // If we don't return 0, then we should return 1, so the "phase origin" can be sampled.
+    // That's a simplification, but if we're wrong it's only by 1 part in 2**64
+    r += (uint64_t) 1;
+
+    // Turn the uint64 into a double
+    // Converting to a double and dividing by 2^64 is not the best way
+    // to use the full range of double values between 0 and 1,
+    // but probably not at a level we care about.
+    // See http://mumble.net/~campbell/tmp/random_real.c
+    // or http://allendowney.com/research/rand/downey07randfloat.pdf
+    return ldexp(r,-64);
+}
+
+template <>
+Complx PowerSpectrum::cgauss<1>(double wavenumber, int64_t rng) {
+    // Return a gaussian complex deviate scaled to the sqrt of the power
+    // Box-Muller, adapted from Numerical Recipes
+    // If fixed_power is set, the complex deviate always has amplitude sqrt(P(k))
+
+    double Pk = this->power(wavenumber);
+    double phase1, phase2, r2;
+    // printf("P(%f) = %g\n",wavenumber,Pk);
+    do { 
+        phase1 = one_rand<1>(rng)*2.0-1.0;
+        phase2 = one_rand<1>(rng)*2.0-1.0;
+        r2 = phase1*phase1+phase2*phase2;
+    } while (!(r2<1.0&&r2>0.0));
+    if (fixed_power){
+        r2 = sqrt(Pk/r2);
+    } else {
+        r2 = sqrt(-Pk*log(r2)/r2);   // Drop the factor of 2, so these Gaussians
+                                     // have variance of 1/2.
+    }
+    // printf("cgauss: %f %f\n", phase1*r2, phase2*r2);
+    return Complx(phase1*r2,phase2*r2);
+}
+
+// ZD_Version 2 must use this "deterministic" version of Box-Muller,
+// which is guaranteed to make exactly 2 RNG calls (unlike the rejection
+// sampling method in Version 1).  In theory, the trig calls make this way
+// slower, but in practice the FFTs, IO, and memory movement dominate the runtime
+template <>
+Complx PowerSpectrum::cgauss<2>(double wavenumber, int64_t rng) {
+    // Return a gaussian complex deviate scaled to the sqrt of the power
+    // Box-Muller, adapted from Numerical Recipes
+    // If fixed_power is set, the complex deviate always has amplitude sqrt(P(k))
+
+    double Pk = this->power(wavenumber);
+    double R = one_rand<2>(rng);
+    double theta = one_rand<2>(rng);
+
+    // Standard Box-Muller without the factor of 2
+    if(!fixed_power)
+        R = sqrt(-Pk*log(R));
+    else
+        R = sqrt(Pk);
+    theta = 2*M_PI*theta;
+
+    double g1 = R*cos(theta);
+    double g2 = R*sin(theta);
+
+    return Complx(g1,g2);
+}

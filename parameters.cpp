@@ -100,14 +100,14 @@ public:
     ~Parameters() {
         inputstream->Close();
 
-        if(version != 1){
-            for(int64_t i = 0; i < 2*ppd*ppd; i++)
-                gsl_rng_free(rng[i]);
-        } else {
+        if(version == 1){
             for(int64_t i = 0; i < ppd/numblock; i++)
-                gsl_rng_free(rng[i]);
+                gsl_rng_free(v1rng[i]);
+            delete[] v1rng;
         }
-        delete[] rng;
+        else{
+            delete[] v2rng;
+        }
     }
 
     void register_vars(void) {
@@ -158,7 +158,9 @@ int Parameters::setup() {
     }
     
     ppd = (int64_t) round(cbrt(np));
+    printf("Generating ICs for ppd = %lu\n", ppd);
     assert(ppd*ppd*ppd == np);
+    assert(ppd <= MAX_PPD);
     
     // NumBlock is only modified in version 1
     if(version == 1){
@@ -214,73 +216,16 @@ int Parameters::setup() {
             gsl_rng_set(v1rng[i], longseed+i);
         }
     } else {
-        // Allocate two per x-skewer (one forward, one reverse)
-        rng = new gsl_rng*[(int64_t)2*ppd*ppd];
-
-        /* We need 2*ppd^2 RNGs, so we need to come up with that many seeds.
-         A simple increment is dangerous because we sometimes increment the base seed
-         for suites of simulations.  Let's avoid sharing modes!
-         So we'll get the seeds as the output of an RNG seeded with the base seed.
-
-         Another quirk of meta-seeding: the first value of an RNG (or the value
-         before the first) is sometimes the seed itself.  So we'd better warm up
-         each meta RNG to avoid correlations!
-
-         But ppd^2 warm-ups can be a lot, so we want to parallelize, which means we need a
-         meta-meta RNG!
-        */
-
-        gsl_rng *meta_meta_rng = gsl_rng_alloc(gsl_rng_taus2);
-        gsl_rng_set(meta_meta_rng, longseed);
-        // Warm up the RNG
-        for (int _k = 0; _k < 100000; _k++)
-            gsl_rng_get(meta_meta_rng);
-
-        gsl_rng **meta_rng = new gsl_rng*[ppd];
-        for(int i = 0; i < ppd; i++){
-            meta_rng[i] = gsl_rng_alloc(gsl_rng_taus2);
-            gsl_rng_set(meta_rng[i], gsl_rng_get(meta_meta_rng));
+        // We'll make ppd/2 independent y-planes
+        // But we do so by fast-forwarding the base RNG,
+        // so logically this is just a single output stream from the RNG
+        v2rng = new pcg64[ppd/2];
+        v2rng[0] = pcg64(longseed);
+        for(int i = 1; i < ppd/2; i++){
+            v2rng[i] = v2rng[i-1];
+            // Each plane is ppd^2 complexes
+            v2rng[i].advance(2*MAX_PPD*MAX_PPD);
         }
-        
-        #pragma omp parallel for schedule(static)
-        for(int64_t i = 0; i < ppd; i++){
-            // Warm up the meta rng here, while we're in parallel
-            for (int _k = 0; _k < 1000; _k++)
-                gsl_rng_get(meta_rng[i]);
-
-            for (int64_t j = 0; j < ppd/2; j++){
-                unsigned long int thisseed = gsl_rng_get(meta_rng[i]);
-                unsigned long int revseed  = gsl_rng_get(meta_rng[i]);
-                unsigned long int thisseed2 = gsl_rng_get(meta_rng[i]);
-                unsigned long int revseed2  = gsl_rng_get(meta_rng[i]);
-
-                // Tausworthe2 is nearly as good as MT and uses far less state
-                // Note: these numerous, small allocations will go way faster with tcmalloc
-                rng[i*2*ppd + 2*j] = gsl_rng_alloc(gsl_rng_taus2);
-                rng[i*2*ppd + 2*j + 1] = gsl_rng_alloc(gsl_rng_taus2);
-                gsl_rng_set(rng[i*2*ppd + 2*j], thisseed);
-                gsl_rng_set(rng[i*2*ppd + 2*j + 1], revseed);
-
-                rng[i*2*ppd + 2*(ppd-1-j)] = gsl_rng_alloc(gsl_rng_taus2);
-                rng[i*2*ppd + 2*(ppd-1-j) + 1] = gsl_rng_alloc(gsl_rng_taus2);
-                gsl_rng_set(rng[i*2*ppd + 2*(ppd-1-j)], thisseed2);
-                gsl_rng_set(rng[i*2*ppd + 2*(ppd-1-j) + 1], revseed2);
-                
-                // At this point, the seeds should have high entropy, so just do a little bit of warmup
-                for (int _k = 0; _k < 10; _k++){
-                    gsl_rng_get(rng[i*2*ppd + 2*j]);
-                    gsl_rng_get(rng[i*2*ppd + 2*j + 1]);
-                    gsl_rng_get(rng[i*2*ppd + 2*(ppd-j-1)]);
-                    gsl_rng_get(rng[i*2*ppd + 2*(ppd-j-1) + 1]);
-                }
-            }
-        }
-
-        for(int i = 0; i < ppd; i++)
-            gsl_rng_free(meta_rng[i]);
-        delete[] meta_rng;
-
-        gsl_rng_free(meta_meta_rng);
     }
     
     return 0;

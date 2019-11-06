@@ -42,6 +42,9 @@ v2.0-- Support for oversampling with and without new power.
 #include "header.h"
 #include "ParseHeader.hh"
 #include <omp.h>
+#include "pcg-rng/pcg_random.hpp"
+
+#include "../include/STimer.cc"
 
 #ifdef DIRECTIO
 // DIO libraries
@@ -59,7 +62,8 @@ v2.0-- Support for oversampling with and without new power.
 static double __dcube;
 #define CUBE(a) ((__dcube=(a))==0.0?0.0:__dcube*__dcube*__dcube)
 
-gsl_rng **v1rng; //The random number generators for the deprecated ZD_Version=1
+gsl_rng **v1rng;  // The random number generators for the deprecated ZD_Version=1
+pcg64 *v2rng;  // The random number generators for version 2 (current version)
 
 // The PLT eigenmodes
 double* eig_vecs;
@@ -67,6 +71,8 @@ int64_t eig_vecs_ppd;
 
 // Global maxima of the particle displacements
 double max_disp[3];
+
+#define MAX_PPD ((int64_t) 65536)
 
 #include "parameters.cpp"
 #include "power_spectrum.cpp"
@@ -133,11 +139,14 @@ typedef struct {
     double val;
 } eigenmode;
 
-double interp_eigmode(int ikx, int iky, int ikz, int i, int64_t ppd){
+void interp_eigmode(int ikx, int iky, int ikz, int64_t ppd, double *e){
 #define EIGMODE(_kx,_ky,_kz,_i) (eig_vecs[(int64_t)(_kx)*eig_vecs_ppd*halfppd*4 + (_ky)*halfppd*4 + (_kz)*4 + (_i)])
     int64_t halfppd = eig_vecs_ppd/2 + 1;
-    if(eig_vecs_ppd % ppd == 0)
-        return EIGMODE(ikx*eig_vecs_ppd/ppd, iky*eig_vecs_ppd/ppd, ikz*eig_vecs_ppd/ppd, i);
+    if(eig_vecs_ppd % ppd == 0){
+        for(int i = 0; i < 4; i++)
+            e[i] = EIGMODE(ikx*eig_vecs_ppd/ppd, iky*eig_vecs_ppd/ppd, ikz*eig_vecs_ppd/ppd, i);
+        return;
+    }
     
     double fx = ((double) eig_vecs_ppd) / ppd * ikx;
     double fy = ((double) eig_vecs_ppd) / ppd * iky;
@@ -182,10 +191,13 @@ double interp_eigmode(int ikx, int iky, int ikz, int i, int64_t ppd){
     f[6] = (fx) * (fy) * (1 - fz);
     f[7] = (fx) * (fy) * (fz);
     
-    return f[0]*EIGMODE(ikx_l, iky_l, ikz_l, i) + f[1]*EIGMODE(ikx_l, iky_l, ikz_h, i) +
-           f[2]*EIGMODE(ikx_l, iky_h, ikz_l, i) + f[3]*EIGMODE(ikx_l, iky_h, ikz_h, i) +
-           f[4]*EIGMODE(ikx_h, iky_l, ikz_l, i) + f[5]*EIGMODE(ikx_h, iky_l, ikz_h, i) +
-           f[6]*EIGMODE(ikx_h, iky_h, ikz_l, i) + f[7]*EIGMODE(ikx_h, iky_h, ikz_h, i);
+    // Treat the eigenmode struct as 4 doubles
+    for(int i = 0; i < 4; i++){
+        e[i] = f[0]*EIGMODE(ikx_l, iky_l, ikz_l, i) + f[1]*EIGMODE(ikx_l, iky_l, ikz_h, i) +
+               f[2]*EIGMODE(ikx_l, iky_h, ikz_l, i) + f[3]*EIGMODE(ikx_l, iky_h, ikz_h, i) +
+               f[4]*EIGMODE(ikx_h, iky_l, ikz_l, i) + f[5]*EIGMODE(ikx_h, iky_l, ikz_h, i) +
+               f[6]*EIGMODE(ikx_h, iky_h, ikz_l, i) + f[7]*EIGMODE(ikx_h, iky_h, ikz_h, i);
+    }
 }
 
 eigenmode get_eigenmode(int kx, int ky, int kz, int64_t ppd, int qPLT){
@@ -206,10 +218,8 @@ eigenmode get_eigenmode(int kx, int ky, int kz, int64_t ppd, int qPLT){
         
         // Use interpolation to get the eigenmode
         eigenmode ehat;
-        ehat.vec[0] = interp_eigmode(ikx, iky, ikz, 0, ppd);
-        ehat.vec[1] = interp_eigmode(ikx, iky, ikz, 1, ppd);
-        ehat.vec[2] = interp_eigmode(ikx, iky, ikz, 2, ppd);
-        ehat.val = interp_eigmode(ikx, iky, ikz, 3, ppd);
+        assert(sizeof(ehat) == sizeof(double)*4);
+        interp_eigmode(ikx, iky, ikz, ppd, (double *) &ehat);
         // Set the sign of the z component (because the real FFT only gives the +kz half-space)
         ehat.vec[2] *= copysign(1, kz);
         // Linear interpolation might not preserve |ehat| = 1, so enforce this
@@ -244,24 +254,31 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
     int x,y,z, kx,ky,kz, xHer,yresHer,zHer;
     int64_t ppd = array.ppd;
 
-    // These are the loop control variable that increment monotonically
-    // The logical x,y,z will reverse direction halfway through
-    int _x, _y, _z;
-
+    // How many RNG calls do we skip?  We'll fast-forward this amount each time we resume
+    int64_t nskip = 0;
 
     double k2_cutoff = param.nyquist*param.nyquist/(param.k_cutoff*param.k_cutoff);
     int ver = param.version;
 
-    _y = yres+yblock*array.block;
-    y = ver != 1 && _y >= ppd/2 ? 3*ppd/2 - 1 - _y : _y;  // reverse iteration
+    y = yres+yblock*array.block;
+
+    pcg64 checkpoint;
+    if(ver == 2){
+        checkpoint = v2rng[y];
+    } 
+
     ky = y>ppd/2?y-ppd:y;        // Nyquist wrapping
     yresHer = array.block-1-yres;         // Reflection
-    for (_z=0;_z<ppd;_z++) {
-        z = ver != 1 && _z >= ppd/2 ? 3*ppd/2 - 1 - _z : _z;  // reverse iteration
+    for (z=0;z<ppd;z++) {
+        // Just crossed the wrap, skip MAX_PPD-ppd rows
+        if(z == ppd/2+1 && ver == 2)
+            nskip += (MAX_PPD - ppd)*MAX_PPD;
         kz = z>ppd/2?z-ppd:z;        // Nyquist wrapping
         zHer = ppd-z; if (z==0) zHer=0;     // Reflection
-        for (_x=0;_x<ppd;_x++) {
-            x = ver != 1 &&_x >= ppd/2 ? 3*ppd/2 - 1 - _x : _x;  // reverse iteration
+        for (x=0;x<ppd;x++) {
+            // Just cross the wrap, skip MAX_PPD-ppd particles
+            if(x == ppd/2+1 && ver == 2)
+                nskip += MAX_PPD - ppd;
             kx = x>ppd/2?x-ppd:x;        // Nyquist wrapping
             xHer = ppd-x; if (x==0) xHer=0;    // Reflection
             // We will pack two complex arrays
@@ -269,20 +286,27 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
             
             // Force Nyquist elements to zero, being extra careful with rounding
             int kmax = ppd/2./param.k_cutoff+.5;
-            if (abs(kx)==kmax || abs(kz)==kmax || abs(ky)==kmax) D = 0.0;
-            // Force all elements with wavenumber above k_cutoff (nominally k_Nyquist) to zero
-            else if (k2>=k2_cutoff) D = 0.0;
-            // Pick out one mode
-            else if (param.qonemode && !(kx==param.one_mode[0] && ky==param.one_mode[1] && kz==param.one_mode[2])) D=0.0;
-            // We deliberately only call cgauss() if we are inside the k_cutoff region
-            // to get the same phase for a given k and cutoff region, no matter the ppd
-            else if (param.version != 1){
-                if(x < ppd/2)
-                    D = Pk.cgauss(sqrt(k2), y*2*ppd + 2*z);
-                else
-                    D = Pk.cgauss(sqrt(k2), y*2*ppd + 2*z + 1);  // +1: use the reverse RNG
+            if ( (abs(kx)==kmax || abs(kz)==kmax || abs(ky)==kmax)
+                    // Force all elements with wavenumber above k_cutoff (nominally k_Nyquist) to zero
+                    || (k2>=k2_cutoff)
+                    // Pick out one mode
+                    || (param.qonemode && !(kx==param.one_mode[0] && ky==param.one_mode[1] && kz==param.one_mode[2])) ) {
+                D=0.0;
+
+                if (ver == 2)
+                    nskip++;
+            }
+            else if (ver != 1){
+                if(nskip){
+                    v2rng[y].advance(2*nskip);
+                    nskip = 0;
+                }
+
+                D = Pk.cgauss<2>(sqrt(k2), y);
             } else {
-                D = Pk.cgauss(sqrt(k2),yres);
+                // We deliberately only call cgauss() if we are inside the k_cutoff region
+                // to get the same phase for a given k and cutoff region, no matter the ppd
+                D = Pk.cgauss<1>(sqrt(k2),yres);
             }
             // D = 0.1;    // If we need a known level
             
@@ -290,20 +314,25 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
             if (k2==0.0) k2 = 1.0;  // Avoid divide by zero
             // if (!(ky==5)) D=0.0;    // Pick out one plane
             
-            eigenmode e = get_eigenmode(kx, ky, kz, ppd, param.qPLT);
-            double rescale = 1.;
-            if(param.qPLTrescale){
-                double a_NL = 1./(1+param.PLT_target_z);
-                double a0 = 1./(1+param.z_initial);
-                double alpha_m = (sqrt(1. + 24*e.val) - 1)/6.;
-                rescale = pow(a_NL/a0, 1 - 1.5*alpha_m);
+            // No-op this math if we aren't going to use it
+            if(D != 0.){
+                eigenmode e = get_eigenmode(kx, ky, kz, ppd, param.qPLT);
+                double rescale = 1.;
+                if(param.qPLTrescale){
+                    double a_NL = 1./(1+param.PLT_target_z);
+                    double a0 = 1./(1+param.z_initial);
+                    double alpha_m = (sqrt(1. + 24*e.val) - 1)/6.;
+                    rescale = pow(a_NL/a0, 1 - 1.5*alpha_m);
+                }
+                F = rescale*I*e.vec[0]/k2*D;
+                G = rescale*I*e.vec[1]/k2*D;
+                H = rescale*I*e.vec[2]/k2*D;
+                
+                if(param.qPLT)
+                    f = (sqrt(1. + 24*e.val) - 1)*.25; // 1/4 instead of 1/6 because v = alpha*u/t0 = 3/2*H*alpha*u
+            } else {
+                F = G = H = f = 0.;
             }
-            F = rescale*I*e.vec[0]/k2*D;
-            G = rescale*I*e.vec[1]/k2*D;
-            H = rescale*I*e.vec[2]/k2*D;
-            
-            if(param.qPLT)
-                f = (sqrt(1. + 24*e.val) - 1)*.25; // 1/4 instead of 1/6 because v = alpha*u/t0 = 3/2*H*alpha*u
             
             // printf("%d %d %d   %d %d %d   %f   %f %f\n",
             // x,y,z, kx,ky,kz, k2, real(D), imag(D));
@@ -331,6 +360,12 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
             }
         }
     } // End the x-z loops
+
+    if(ver != 1){
+        //printf("Made %lu calls (nskip at end %lu)\n", (uint64_t) (v2rng[y]-checkpoint), nskip);
+        v2rng[y].advance(2*nskip);
+        assert(v2rng[y]-checkpoint == 2*MAX_PPD*MAX_PPD);
+    }
 
     // Need to do something special for ky=0 to enforce the 
     // Hermitian structure.  Recall that this whole plane was
@@ -576,7 +611,7 @@ int main(int argc, char *argv[]) {
     printf("Block file size (GB): %5.3f\n", memory/param.numblock/param.numblock);
 #else
     printf("Not compiled with -DDISK; whole problem will reside in memory.\n");
-    printf("Total memory usage (GB): %5.3f\n", memory);
+    printf("Total memory usage (GB): %5.3f\n", memory + memory/param.numblock*2.0);
     printf("Two slab memory usage (GB): %5.3f\n", memory/param.numblock*2.0);
     printf("Block size (GB): %5.3f\n", memory/param.numblock/param.numblock);
 #endif
@@ -602,8 +637,8 @@ int main(int argc, char *argv[]) {
     CreateDirectories(param.output_dir);
 
     BlockArray array(param.ppd,param.numblock,narray,param.output_dir,param.ramdisk);    
-    srandom(param.seed);
     ZeldovichZ(array, param, Pk);
+
     output = 0; // Current implementation doesn't use user-provided output
     ZeldovichXY(array, param, output, densoutput);
 
