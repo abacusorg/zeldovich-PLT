@@ -44,8 +44,6 @@ v2.0-- Support for oversampling with and without new power.
 #include <omp.h>
 #include "pcg-rng/pcg_random.hpp"
 
-#include "../include/STimer.cc"
-
 #ifdef DIRECTIO
 // DIO libraries
 #include <stdint.h>
@@ -94,6 +92,8 @@ void Setup_FFTW(int n) {
     p = new fftw_complex[n*n];
     plan1d = fftw_plan_dft_1d(n, p, p, +1, FFTW_PATIENT);
     plan2d = fftw_plan_dft_2d(n, n, p, p, +1, FFTW_PATIENT);
+    //plan1d = fftw_plan_dft_1d(n, p, p, +1, FFTW_ESTIMATE);
+    //plan2d = fftw_plan_dft_2d(n, n, p, p, +1, FFTW_ESTIMATE);
     delete []p;
 
     if(n >= 512)
@@ -397,26 +397,6 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
     return;
 }
 
-void StoreBlock(BlockArray& array, int yblock, int zblock, Complx *slab) {
-    // We must be sure to store the block sequentially.
-    // data[zblock=0..NB-1][yblock=0..NB-1]
-    //     [array=0..1][zresidual=0..P-1][yresidual=0..P-1][x=0..PPD-1]
-    // Can't openMP an I/O loop.
-    unsigned int a;
-    int yres,zres,z;
-    array.bopen(yblock,zblock,"w");
-    for (a=0;a<array.narray;a++) 
-    for (zres=0;zres<array.block;zres++) 
-    for (yres=0;yres<array.block;yres++) {
-        z = zres+array.block*zblock;
-        //y = yres+array.block*yblock;  // the slab is in the y coordinate, so we never need the absolute y index
-        // Copy the whole X skewer
-        array.bwrite(&(AYZX(slab,a,yres,z,0)),array.ppd);
-    }
-    array.bclose();
-    return;
-}
-
 void ZeldovichZ(BlockArray& array, Parameters& param, PowerSpectrum& Pk) {
     // Generate the Fourier space density field, one Y block at a time
     // Use it to generate all arrays (density, qx, qy, qz) in Fourier space,
@@ -441,8 +421,8 @@ void ZeldovichZ(BlockArray& array, Parameters& param, PowerSpectrum& Pk) {
         // Now store it into the primary BlockArray.  
         // Can't openMP an I/O loop.
         for (zblock=0;zblock<array.numblock;zblock++) {
-            StoreBlock(array,yblock,zblock,slab);
-            StoreBlock(array,array.numblock-1-yblock,zblock,slabHer);
+            array.StoreBlock(yblock,zblock,slab);
+            array.StoreBlock(array.numblock-1-yblock,zblock,slabHer);
         }
     }  // End yblock for loop
     delete []slabHer;
@@ -456,31 +436,6 @@ void ZeldovichZ(BlockArray& array, Parameters& param, PowerSpectrum& Pk) {
 // We use a set of X-Y arrays of Complx numbers (ordered by A and Z).
 #define AZYX(_slab,_a,_z,_y,_x) _slab[(int64_t)(_x)+array.ppd*((_y)+array.ppd*((_a)+array.narray*(_z)))]
 
-void LoadBlock(BlockArray& array, int yblock, int zblock, Complx *slab) {
-    // We must be sure to access the block sequentially.
-    // data[zblock=0..NB-1][yblock=0..NB-1]
-    //     [array=0..1][zresidual=0..P-1][yresidual=0..P-1][x=0..PPD-1]
-    // Can't openMP an I/O loop.
-    unsigned int a;
-    int yres,y,zres,yshift;
-    array.bopen(yblock,zblock,"r");
-    for (a=0;a<array.narray;a++)
-    for (zres=0;zres<array.block;zres++) 
-    for (yres=0;yres<array.block;yres++) {
-        //z = zres+array.block*zblock;  // slabs are in z; never need the absolute z coord
-        y = yres+array.block*yblock;
-        // Copy the whole X skewer.  However, we want to
-        // shift the y frequencies in the reflected half
-        // by one.
-        // FLAW: Assumes array.ppd is even.
-        if (y>=array.ppd/2) yshift=y+1; else yshift=y;
-        if (yshift==array.ppd) yshift=array.ppd/2;
-        // Put it somewhere; this is about to be overwritten
-        array.bread(&(AZYX(slab,a,zres,yshift,0)),array.ppd);
-    }
-    array.bclose();
-    return;
-}
 
 void ZeldovichXY(BlockArray& array, Parameters& param, FILE *output, FILE *densoutput) {
     // Do the Y & X inverse FFT and output the results.
@@ -500,7 +455,7 @@ void ZeldovichXY(BlockArray& array, Parameters& param, FILE *output, FILE *denso
         // Can't openMP an I/O loop.
         printf("."); fflush(stdout);
         for (yblock=0;yblock<array.numblock;yblock++) {
-            LoadBlock(array, yblock, zblock, slab);
+            array.LoadBlock(yblock, zblock, slab);
         } 
 
         // The Nyquist frequency y=array.ppd/2 must now be set to 0
@@ -583,6 +538,9 @@ int main(int argc, char *argv[]) {
         printf("Usage: %s param_file\n", argv[0]);
         exit(1);
     }
+
+    STimer totaltime;
+    totaltime.Start();
     
     FILE *output, *densoutput;
     double memory;
@@ -607,11 +565,11 @@ int main(int argc, char *argv[]) {
 #ifdef DISK
     printf("Compiled with -DDISK; blocks will be buffered on disk.\n");
     printf("Total (out-of-core) memory usage (GB): %5.3f\n", memory);
-    printf("Two slab (in-core) memory usage (GB): %5.3f\n", memory/param.numblock*2.0);
+    printf("Two slab (in-core) memory usage (GB): %5.3f\n", memory/param.numblock*2.0 + memory/param.numblock/param.numblock);  // extra from StoreBlock_tmp
     printf("Block file size (GB): %5.3f\n", memory/param.numblock/param.numblock);
 #else
     printf("Not compiled with -DDISK; whole problem will reside in memory.\n");
-    printf("Total memory usage (GB): %5.3f\n", memory + memory/param.numblock*2.0);
+    printf("Total memory usage (GB): %5.3f\n", memory + memory/param.numblock*2.0);  // extra is from 2 blocks in ZeldovichZ
     printf("Two slab memory usage (GB): %5.3f\n", memory/param.numblock*2.0);
     printf("Block size (GB): %5.3f\n", memory/param.numblock/param.numblock);
 #endif
@@ -633,11 +591,12 @@ int main(int argc, char *argv[]) {
 
     // We're about to start the BlockArray, thus using the disk
     // Remove any existing IC files
-    CleanDirectory(param.output_dir);
-    CreateDirectories(param.output_dir);
+    InitOutput(param);
 
-    BlockArray array(param.ppd,param.numblock,narray,param.output_dir,param.ramdisk);    
+    BlockArray array(param.ppd,param.numblock,narray,param.output_dir,param.ramdisk);
     ZeldovichZ(array, param, Pk);
+
+    printf("tailcount: %d\n", tailcount.load());
 
     output = 0; // Current implementation doesn't use user-provided output
     ZeldovichXY(array, param, output, densoutput);
@@ -652,6 +611,12 @@ int main(int argc, char *argv[]) {
     
     if(param.qPLT)
         delete[] eig_vecs;
+
+    TeardownOutput();
+
+    totaltime.Stop();
+    printf("zeldovich took %.3g sec for ppd %lu ==> %.2g Mpart/sec\n",
+        totaltime.Elapsed(), param.ppd, param.np/1e6/totaltime.Elapsed());
     
     return 0;
 }

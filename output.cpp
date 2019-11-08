@@ -10,11 +10,14 @@
 #include <limits.h>     /* PATH_MAX */
 #include <errno.h>
 
-double density_variance;
 #define YX(_slab,_y,_x) _slab[(_x)+array.ppd*(_y)]
 
 #define WRAP(_x) if (_x<0.0) _x += param.boxsize; \
     if (_x>=param.boxsize) _x -= param.boxsize;
+
+double density_variance;
+void *output_tmp;  // output buffer
+
 class ZelParticle {
 public:
     unsigned short i,j,k;
@@ -33,9 +36,16 @@ public:
     double vel[3];
 };
 
+enum OutputType {OUTPUT_ZEL, OUTPUT_RVZEL, OUTPUT_RVDOUBLEZEL};
+OutputType param_icformat;
+size_t sizeof_outputtype;
+
 void WriteParticlesSlab(FILE *output, FILE *densoutput, 
 int z, Complx *slab1, Complx *slab2, Complx *slab3, Complx *slab4,
 BlockArray& array, Parameters& param) {
+    STimer outtimer;
+    outtimer.Start();
+
     // Write out one slab of particles
     int x,y;
     double pos[4], vel[3];
@@ -52,11 +62,7 @@ BlockArray& array, Parameters& param) {
     norm = 1.0; densitynorm = 1.0; vnorm = 1.0;
     //norm = 1e-2;
 
-    char fn[1080];
-    sprintf(fn, "%s/ic_%ld",param.output_dir,z*param.cpd/param.ppd);
-    //printf("z: %d goes goes to ic_%d /n", z, z*param.cpd/param.ppd);
-    output = fopen(fn,"ab");
-
+    int64_t i = 0;
     for (y=0;y<array.ppd;y++)
     for (x=0;x<array.ppd;x++) {
         // The displacements are in YX(slab,y,x) and the
@@ -84,27 +90,36 @@ BlockArray& array, Parameters& param) {
         if (param.qascii) {
             fprintf(output,"%d %d %d %f %f %f %f %f %f %f\n",x,y,z,pos[0],pos[1],pos[2],pos[3], vel[0], vel[1], vel[2]);
         } else {
-            if(strcmp(param.ICFormat, "RVdoubleZel") == 0){
-                RVdoubleZelParticle out;
-                out.i = z; out.j =y; out.k = x;
-                out.displ[0] = pos[2]; out.displ[1] = pos[1]; out.displ[2] = pos[0];
-                out.vel[0] = vel[2]; out.vel[1] = vel[1]; out.vel[2] = vel[0];
-                fwrite(&out,sizeof(out),1,output);
-            } else if (strcmp(param.ICFormat, "RVZel") == 0){
-                RVZelParticle out;
-                out.i = z; out.j =y; out.k = x;
-                out.displ[0] = pos[2]; out.displ[1] = pos[1]; out.displ[2] = pos[0];
-                out.vel[0] = vel[2]; out.vel[1] = vel[1]; out.vel[2] = vel[0];
-                fwrite(&out,sizeof(out),1,output);
-            } else if (strcmp(param.ICFormat, "Zeldovich") == 0){
-                ZelParticle out;
-                out.i = z; out.j =y; out.k = x;
-                out.displ[0] = pos[2]; out.displ[1] = pos[1]; out.displ[2] = pos[0];
-                fwrite(&out,sizeof(ZelParticle),1,output);
-            }
-            else {
-                fprintf(stderr, "Error: unknown ICFormat \"%s\". Aborting.\n", param.ICFormat);
-                exit(1);
+            switch(param_icformat){
+                case OUTPUT_RVDOUBLEZEL: {
+                    RVdoubleZelParticle out;
+                    out.i = z; out.j =y; out.k = x;
+                    out.displ[0] = pos[2]; out.displ[1] = pos[1]; out.displ[2] = pos[0];
+                    out.vel[0] = vel[2]; out.vel[1] = vel[1]; out.vel[2] = vel[0];
+                    ((RVdoubleZelParticle *) output_tmp)[i++] = out;
+                    break;
+                }
+
+                case OUTPUT_RVZEL: {
+                    RVZelParticle out;
+                    out.i = z; out.j =y; out.k = x;
+                    out.displ[0] = pos[2]; out.displ[1] = pos[1]; out.displ[2] = pos[0];
+                    out.vel[0] = vel[2]; out.vel[1] = vel[1]; out.vel[2] = vel[0];
+                    ((RVZelParticle *) output_tmp)[i++] = out;
+                    break;
+                }
+
+                case OUTPUT_ZEL: {
+                    ZelParticle out;
+                    out.i = z; out.j =y; out.k = x;
+                    out.displ[0] = pos[2]; out.displ[1] = pos[1]; out.displ[2] = pos[0];
+                    ((ZelParticle *) output_tmp)[i++] = out;
+                    break;
+                }
+
+                default:
+                    fprintf(stderr, "Error: unknown ICFormat \"%s\". Aborting.\n", param.ICFormat);
+                    exit(1);
             }
             //           fwrite(vel,sizeof(float),3,output);
             //           int *id;
@@ -125,8 +140,64 @@ BlockArray& array, Parameters& param) {
 
         // cic->add_cic(param.boxsize,pos);
     }
+
+    assert(i == param.ppd*param.ppd);
+
+    char fn[1080];
+    sprintf(fn, "%s/ic_%ld",param.output_dir,z*param.cpd/param.ppd);
+    //printf("z: %d goes goes to ic_%d /n", z, z*param.cpd/param.ppd);
+    output = fopen(fn,"ab");
+    fwrite(output_tmp, sizeof_outputtype, param.ppd*param.ppd, output);
     fclose(output);
+
+
+    outtimer.Stop();
+    int64_t totsize = array.ppd*array.ppd*sizeof_outputtype;
+    printf("WriteParticlesSlab took %.3g sec to write %.3g MB ==> %.3g MB/sec\n",
+            outtimer.Elapsed(), totsize/1e6, totsize/1e6/outtimer.Elapsed());
     return;
+}
+
+int CleanDirectory(const char *path);
+int CreateDirectories(const char *path);
+
+void InitOutput(Parameters &param){
+    CleanDirectory(param.output_dir);
+    CreateDirectories(param.output_dir);
+
+    if(strcmp(param.ICFormat, "RVdoubleZel") == 0){
+        param_icformat = OUTPUT_RVDOUBLEZEL;
+        output_tmp = new RVdoubleZelParticle[param.ppd*param.ppd];
+        sizeof_outputtype = sizeof(RVdoubleZelParticle);
+    } else if (strcmp(param.ICFormat, "RVZel") == 0){
+        param_icformat = OUTPUT_RVZEL;
+        output_tmp = new RVZelParticle[param.ppd*param.ppd];
+        sizeof_outputtype = sizeof(RVZelParticle);
+    } else if (strcmp(param.ICFormat, "Zeldovich") == 0){
+        param_icformat = OUTPUT_ZEL;
+        output_tmp = new ZelParticle[param.ppd*param.ppd];
+        sizeof_outputtype = sizeof(ZelParticle);
+    }
+    else {
+        fprintf(stderr, "Error: unknown ICFormat \"%s\". Aborting.\n", param.ICFormat);
+        exit(1);
+    }
+}
+
+void TeardownOutput(){
+    switch(param_icformat){
+        case OUTPUT_RVDOUBLEZEL:
+            delete[] (RVdoubleZelParticle *) output_tmp;
+            break;
+
+        case OUTPUT_RVZEL:
+            delete[] (RVZelParticle *) output_tmp;
+            break;
+
+        case OUTPUT_ZEL:
+            delete[] (ZelParticle *) output_tmp;
+            break;
+    }
 }
 
 // Remove files named ic_* and zeldovich.* from the current directory

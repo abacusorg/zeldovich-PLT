@@ -83,7 +83,7 @@ public:
         k_cutoff = 1.; // Legal default (corresponds to k_nyquist)
         strcpy(ICFormat,""); // Illegal default
         ramdisk = 0;  // Legal default for most cases
-        version = 1;  // All new ICs should use verison 2 (default), but version 1 is available for backwards compatibility
+        version = -1;  // All new ICs should use verison 2 (default), but version 1 is available for backwards compatibility
         
         // Read the paramater file values
         register_vars();
@@ -146,6 +146,17 @@ public:
 int Parameters::setup() {
     // Compute any derived quantities.  Look for errors.
     // Return 0 if all is well, 1 if this failed.
+
+    if(version == -1){
+        printf(R"(
+*** WARNING: ZD_Version was not specified for zeldovich-PLT.  New ICs should
+    specify ZD_Version = 2; legacy ICs should use ZD_Version = 1 to reproduce
+    the old phases.  Defaulting to ZD_Version = 2.
+)");
+        version = 2;
+    }
+
+    assert(version == 1 || version == 2);
 
     if(version == 1){
         printf(R"(

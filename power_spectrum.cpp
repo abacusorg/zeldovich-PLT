@@ -246,6 +246,9 @@ Complx PowerSpectrum::cgauss<1>(double wavenumber, int64_t rng) {
     return Complx(phase1*r2,phase2*r2);
 }
 
+#include <atomic>
+static std::atomic<int> tailcount(0);
+
 // ZD_Version 2 must use this "deterministic" version of Box-Muller,
 // which is guaranteed to make exactly 2 RNG calls (unlike the rejection
 // sampling method in Version 1).  In theory, the trig calls make this way
@@ -269,6 +272,11 @@ Complx PowerSpectrum::cgauss<2>(double wavenumber, int64_t rng) {
 
     double g1 = R*cos(theta);
     double g2 = R*sin(theta);
+
+    if(g1 >= 6*sqrt(Pk/2))
+        tailcount++;
+    if(g2 >= 6*sqrt(Pk/2))
+        tailcount++;
 
     return Complx(g1,g2);
 }
