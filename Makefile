@@ -1,6 +1,6 @@
 # Load Abacus's make settings if available
 ROOT_DIR := ..
-#-include $(ROOT_DIR)/common.mk
+-include $(ROOT_DIR)/common.mk
 
 CXX ?= g++
 # Set DISK if you want to run the big BlockArray explicitly out of core.
@@ -10,13 +10,12 @@ CXXFLAGS += -Wall
 PARSEHEADER_CPPFLAGS ?= -I ParseHeader
 PARSEHEADER_LIBS ?= -L ParseHeader -lparseheader
 
-#GSL_LIBS ?= $(shell gsl-config --libs)
-#GSL_CPPFLAGS ?= $(shell gsl-config --cflags)
-GSL_LIBS ?= -lgsl -lgslcblas
+GSL_LIBS ?= $(shell gsl-config --libs)
+GSL_CPPFLAGS ?= $(shell gsl-config --cflags)
 
-CPPFLAGS +=$(TCMALLOC_CPPFLAGS) $(THREAD_CPPFLAGS) $(PARSEHEADER_CPPFLAGS) $(GSL_CPPFLAGS) -DDISK
+CPPFLAGS += $(THREAD_CPPFLAGS) $(PARSEHEADER_CPPFLAGS) $(GSL_CPPFLAGS) -DDISK
 
-LIBS += $(TCMALLOC_LIBS) $(PARSEHEADER_LIBS) -lfftw3 $(GSL_LIBS) -lstdc++
+LIBS += $(PARSEHEADER_LIBS) -lfftw3 $(GSL_LIBS) -lstdc++
 
 all: zeldovich 
 

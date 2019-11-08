@@ -149,11 +149,12 @@ int Parameters::setup() {
 
     if(version == -1){
         printf(R"(
-*** WARNING: ZD_Version was not specified for zeldovich-PLT.  New ICs should
-    specify ZD_Version = 2; legacy ICs should use ZD_Version = 1 to reproduce
-    the old phases.  Defaulting to ZD_Version = 2.
+*** ERROR: ZD_Version was not specified for zeldovich-PLT.  New ICs should
+    specify ZD_Version = 2; legacy ICs (pre-November 2019) should use
+    ZD_Version = 1 to reproduce the old phases.  Please specify one of
+    these in the parameter file.
 )");
-        version = 2;
+        exit(1);
     }
 
     assert(version == 1 || version == 2);
@@ -213,10 +214,6 @@ int Parameters::setup() {
     
     //seed the rng. a seed of zero uses the current time
     unsigned long int longseed = seed;
-    if (seed == 0){
-        longseed = time(0);
-        printf("Seed 0 will use current time %lu\n", longseed);
-    }
 
     if(version == 1){
         int block = ppd/numblock;

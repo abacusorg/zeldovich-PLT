@@ -17,6 +17,8 @@
 
 double density_variance;
 void *output_tmp;  // output buffer
+STimer outtimer;
+size_t output_bytes_written = 0;
 
 class ZelParticle {
 public:
@@ -43,7 +45,6 @@ size_t sizeof_outputtype;
 void WriteParticlesSlab(FILE *output, FILE *densoutput, 
 int z, Complx *slab1, Complx *slab2, Complx *slab3, Complx *slab4,
 BlockArray& array, Parameters& param) {
-    STimer outtimer;
     outtimer.Start();
 
     // Write out one slab of particles
@@ -153,8 +154,8 @@ BlockArray& array, Parameters& param) {
 
     outtimer.Stop();
     int64_t totsize = array.ppd*array.ppd*sizeof_outputtype;
-    printf("WriteParticlesSlab took %.3g sec to write %.3g MB ==> %.3g MB/sec\n",
-            outtimer.Elapsed(), totsize/1e6, totsize/1e6/outtimer.Elapsed());
+    output_bytes_written += totsize;
+    
     return;
 }
 
@@ -198,6 +199,9 @@ void TeardownOutput(){
             delete[] (ZelParticle *) output_tmp;
             break;
     }
+
+    printf("WriteParticlesSlab took %.3g sec to write %.3g MB ==> %.3g MB/sec\n",
+            outtimer.Elapsed(), output_bytes_written/1e6, output_bytes_written/1e6/outtimer.Elapsed());
 }
 
 // Remove files named ic_* and zeldovich.* from the current directory

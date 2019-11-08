@@ -92,8 +92,6 @@ void Setup_FFTW(int n) {
     p = new fftw_complex[n*n];
     plan1d = fftw_plan_dft_1d(n, p, p, +1, FFTW_PATIENT);
     plan2d = fftw_plan_dft_2d(n, n, p, p, +1, FFTW_PATIENT);
-    //plan1d = fftw_plan_dft_1d(n, p, p, +1, FFTW_ESTIMATE);
-    //plan2d = fftw_plan_dft_2d(n, n, p, p, +1, FFTW_ESTIMATE);
     delete []p;
 
     if(n >= 512)
@@ -564,14 +562,14 @@ int main(int argc, char *argv[]) {
 
 #ifdef DISK
     printf("Compiled with -DDISK; blocks will be buffered on disk.\n");
-    printf("Total (out-of-core) memory usage (GB): %5.3f\n", memory);
-    printf("Two slab (in-core) memory usage (GB): %5.3f\n", memory/param.numblock*2.0 + memory/param.numblock/param.numblock);  // extra from StoreBlock_tmp
-    printf("Block file size (GB): %5.3f\n", memory/param.numblock/param.numblock);
+    printf("Total (out-of-core) memory usage: %5.3f GiB\n", memory);
+    printf("Two slab (in-core) memory usage: %5.3f GiB\n", memory/param.numblock*2.0 + memory/param.numblock/param.numblock);  // extra from StoreBlock_tmp
+    printf("Block file size: %5.3f GiB\n", memory/param.numblock/param.numblock);
 #else
     printf("Not compiled with -DDISK; whole problem will reside in memory.\n");
-    printf("Total memory usage (GB): %5.3f\n", memory + memory/param.numblock*2.0);  // extra is from 2 blocks in ZeldovichZ
-    printf("Two slab memory usage (GB): %5.3f\n", memory/param.numblock*2.0);
-    printf("Block size (GB): %5.3f\n", memory/param.numblock/param.numblock);
+    printf("Total memory usage: %5.3f GiB\n", memory + memory/param.numblock*2.0);  // extra is from 2 blocks in ZeldovichZ
+    printf("Two slab memory usage: %5.3f GiB\n", memory/param.numblock*2.0);
+    printf("Block size: %5.3f GiB\n", memory/param.numblock/param.numblock);
 #endif
 
     if (param.qdensity>0) {
@@ -596,8 +594,6 @@ int main(int argc, char *argv[]) {
     BlockArray array(param.ppd,param.numblock,narray,param.output_dir,param.ramdisk);
     ZeldovichZ(array, param, Pk);
 
-    printf("tailcount: %d\n", tailcount.load());
-
     output = 0; // Current implementation doesn't use user-provided output
     ZeldovichXY(array, param, output, densoutput);
 
@@ -605,8 +601,8 @@ int main(int argc, char *argv[]) {
     printf("This could be compared to the P(k) prediction of %f\n",
     Pk.sigmaR(param.separation/4.0)*pow(param.boxsize,1.5));
     
-    printf("The maximum component-wise displacements are (%g, %g, %g).\n", max_disp[0], max_disp[1], max_disp[2]);
-    printf("For Abacus' 2LPT implementation to work (assuming FINISH_WAIT_RADIUS = 1),\nthis implies a maximum CPD of %d\n", (int) (param.boxsize/(2*max_disp[2])));  // The slab direction is z in this code
+    printf("The maximum component-wise displacements are (%g, %g, %g), same units as BoxSize.\n", max_disp[0], max_disp[1], max_disp[2]);
+    printf("For Abacus' 2LPT implementation to work (assuming FINISH_WAIT_RADIUS = 1),\n\tthis implies a maximum CPD of %d\n", (int) (param.boxsize/(2*max_disp[2])));  // The slab direction is z in this code
     // fclose(output);
     
     if(param.qPLT)

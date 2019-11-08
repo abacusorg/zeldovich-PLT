@@ -32,12 +32,12 @@ The code can run small problems in memory, but it has an efficient scheme for bu
 Build with `make`, and run with `./zeldovich <param_file>`.  An example parameter file (`example.par`) is provided, and all of the options are detailed in the "Parameter file options" section below.
 
 ### Dependencies
-Zeldovich-PLT needs FFTW 3 and GSL, and the ParseHeader library needs flex and Bison >= 3.0.  The code has been tested with the GNU and Intel compilers.  Initialization of the RNG for large problems will go faster if you link a thread-aware memory allocator like tcmalloc or tbbmalloc.
+zeldovich-PLT is a C++11 code.  It requires FFTW 3 and GSL, and the ParseHeader library needs flex and Bison >= 3.0.  The code has been tested with the GNU and Intel C++ compilers.
 
 ### Oversampling Modes
 This code supports generating phase-matched ICs with different particle densities.  Simply increase the particle number `NP` while holding other parameters fixed.  If desired, the `ZD_k_cutoff` parameter may be utilized to limit the oversampled ICs to the same modes as the original ICs without including new power past the original k<sub>Nyquist</sub>.  Otherwise, each set of ICs will include power out to their respective k<sub>Nyquist</sub> spheres.
 
-For example, to generate 128<sup>3</sup> oversampled initial conditions that sample the same modes as 64<sup>3</sup> initial conditions, invoke the code twice: once with NP = 64<sup>3</sup> to generate the fiducial simulation, then again with NP = 128<sup>3</sup> to generate the oversampled.  The second invocation can include `ZD_k_cutoff = 2` if one does not want new power.
+For example, to generate 128<sup>3</sup> oversampled initial conditions that sample the same modes as 64<sup>3</sup> initial conditions, invoke the code twice: once with NP = 64<sup>3</sup> to generate the nominal resolution, then again with NP = 128<sup>3</sup> to generate the oversampled resolution.  The second invocation can include `ZD_k_cutoff = 2` if one does not want new power.
 
 If `ZD_Version=1`, then `ZD_NumBlock` also affects the IC phases.  This is not the case in version 2 or later.  But if using `ZD_Version = 1`, then one must take care to not change `ZD_NumBlock` between invocations.
 
@@ -51,7 +51,7 @@ If you use this code, please cite [Garrison et al. (2016)](https://arxiv.org/abs
 ## Technical details
 We're doing four big `[z][y][x]` transform.  But we don't store the
 data that way.  Instead, we block the z & y directions.  So for a 
-`PPD^3` problem, we have `NB` blocks of `P=PPD/NB` two-d information.  Each
+`PPD^3` problem (PPD = particles per dimension), we have `NB` blocks of `P=PPD/NB` two-d information.  Each
 block contains the full `PPD` x-dimension for all four problems.
 We require that `NB` divides `PPD` evenly, just for sanity.
 
@@ -124,19 +124,63 @@ once.  It just overwrites both elements with a different random
 number.  That avoids some Nyquist bookkeeping.
 
 We must load `k` and `-k` at the same time (or play horrid tricks to 
-reset and resyncronize the random number generator).  There is no
+reset and resynchronize the random number generator).  There is no
 avoiding having two slabs in memory for this.  Given that our first
 sweep is in Y slabs, it is probably easiest to split the half-space
 on `y=0`.
 
-## PLT eigenmodes
-The PLT eigenmode features of this code are developed and tested in
-[Garrison et al. (2016)](https://arxiv.org/abs/1605.02333) based on the work of Marcos, et al. (2006).
+### Random Number Generation
+We use a Permuted Congruential Generator (PCG; http://www.pcg-random.org/)
+to generate the random numbers used in the Gaussian random field.
+PCG offers many of the nice properties of a linear congruential generator (LCG),
+such as speed, known period, and the ability to fast-forward, without
+the associated statistical issues of an LCG.  See [O'Neill (2014)](http://www.pcg-random.org/pdf/hmc-cs-2014-0905.pdf)
+for the details.
 
-Nominally, this code only produces ZA displacements, from which velocities can 
-be computed in config space later.  However, using the PLT eigenmodes requires computing the
-velocities in Fourier space, so we have to do that here.  Thus, we require four
-complex FFTs instead of two.
+We use PCG64, which yields 64-bit output from 128-bit internal state.
+Thus, we easily probe the high-density tails of the Gaussian distribution
+(which 32-bit generators have to treat carefully).
+
+We use PCG's fast-forward, or jump-ahead ability to support changing the
+number of particles (and thus changing the size of the Fourier cube) while
+keeping the modes fixed.  Logically, we are generating a large cube of white
+noise suitable for a huge PPD (65536, in this case) and then only using the
+corners of the space that our actual PPD requires.  But PCG's fast-forward
+ability lets us skip the regions of Fourier space that are not sampled
+in O(log N) time, where N is the number of samples being skipped.  This
+is what allows our efficient up- and down-sampling.
+
+Since we need a consistent mapping of random numbers to Fourier element,
+we use the "deterministic" version of Box-Muller instead of the more common
+rejection sampling method.  This means we need to use expensive trig functions,
+but in practice there was no performance hit from this change.  The FFTs,
+IO, and memory movement dominate the runtime.
+
+PCG's fast-forward also helps with the parallelization of the RNG.  Logically,
+we imagine the entire PPD^3 Fourier cube being filled with a single stream
+of random numbers from the PCG with the specified seed, but in practice
+many planes are filled in parallel by separate threads.  So we assign each
+particle plane a single RNG whose state has been fast-forwarded from the
+initial state, and each thread uses that plane's RNG when operating on it.
+
+Version 1 of the code used GSL's Mersenne Twister (which does not support
+jump-ahead0.  This is actually our only GSL dependency, so the code could be compiled
+without GSL if one didn't care about Version 1 support.
+
+## PLT eigenmodes
+This code supports particle linear theory (PLT) corrections to the initial
+conditions—essentially discreteness corrections.  These are described
+in the Overview above.
+
+The PLT eigenmode features of this code are developed and tested in
+[Garrison et al. (2016)](https://arxiv.org/abs/1605.02333) based on
+the work of Marcos, et al. (2006).
+
+Nominally, this code only produces ZA displacements, from which velocities
+can be computed in config space later.  However, using the PLT eigenmodes
+requires computing the velocities in Fourier space, so we have to do that
+here.  Thus, we require four complex FFTs instead of two, doubling the
+overall memory usage.
 
 We provide a precompted set of 128<sup>3</sup> numerical eigenmodes with this code.
 The code does linear interpolation if a finer FFT mesh is being used.
@@ -147,6 +191,8 @@ The code does linear interpolation if a finer FFT mesh is being used.
 The random number seed.  This variable determines the output phases.
 If `ZD_Version=1`, `ZD_NumBlock` also affects
 the output phases.  This is not the case in version 2.
+
+In the past, a seed of 0 used the current time.  This is no longer the case.
 
 `ZD_NumBlock`: *integer*  
 This is the number of blocks to break the FFT
@@ -181,6 +227,10 @@ will be `ZD_NumBlock*ZD_k_cutoff`. See `ZD_k_cutoff` for details.
 
 If `ZD_Version=1`, both this variable and `ZD_Seed` affect the output phases.
 This is not the case since version 2.
+
+If the `-DDISK` flag is not set (see Makefile Options below), then
+blocks are stored in memory, not disk.  So `NumBlock` matters less
+in that case.
 
 `ZD_Version`: *int*
 The version of the algorithm for generating modes from random numbers.
@@ -267,10 +317,12 @@ The output format should include velocities if you turn this on, either in the `
 The file containing the PLT eigenmodes; i.e. the true growing modes for the grid.
 This file usually contains something like a 128<sup>3</sup> grid,
 and the code linearly interpolates the eigenmodes and eigenvalues to finer meshes as needed.
+This parameter should be `eigmodes128` to use the file of that name included in this repository.
 
 `ZD_qPLT_rescale`: *integer*  
 If `> 0`, increase the amplitude of the displacements on small scales (near `k_Nyquist`)
-to preemptively compensate for future undergrowth that we know happens on a grid.
+to preemptively compensate for unavoidable future mode "under-growth" that occurs due
+to the discrete particle nature of the simulations.
 
 `ZD_PLT_target_z`: *double*  
 If `ZD_qPLT_rescale > 0`, then increase the initial displacements such that they will match the linear theory prediction
@@ -351,9 +403,13 @@ public:
 };
 ```
 
+## Makefile options
+The `-DDISK` option in the Makefile is a C-preprocessor flag that enables the `DISK` macro definition.
+The code will buffer blocks on disk in the `InitialConditionsDirectory` instead of in memory if it is enabled.
+This allows one to generate much larger ICs than fit in memory.  Comment or uncomment this option to enable/disable
+it according to your use case.
 
 ## License
 [MIT](LICENSE)
 
 If you use this code, please cite [Garrison et al. (2016)](https://arxiv.org/abs/1605.02333).
-

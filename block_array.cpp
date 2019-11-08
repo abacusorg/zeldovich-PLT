@@ -79,10 +79,10 @@ public:
             }
         }
 
-        printf("Block IO took %.3g sec to write %.3g MB ==> %.3g MB/sec\n",
-            wtimer.Elapsed(), bytes_written/1e6, bytes_written/1e6/wtimer.Elapsed());
-        printf("Block IO took %.3g sec to read %.3g MB ==> %.3g MB/sec\n",
-            rtimer.Elapsed(), bytes_read/1e6, bytes_read/1e6/rtimer.Elapsed());
+        printf("Block IO took %.2f sec to write %.2f GB ==> %.1f MB/sec\n",
+            wtimer.Elapsed(), bytes_written/1e9, bytes_written/1e6/wtimer.Elapsed());
+        printf("Block IO took %.2f sec to read %.2f GB ==> %.1f MB/sec\n",
+            rtimer.Elapsed(), bytes_read/1e9, bytes_read/1e6/rtimer.Elapsed());
 
 #else
         delete []arr;
@@ -134,7 +134,6 @@ public:
         // We must be sure to store the block sequentially.
         // data[zblock=0..NB-1][yblock=0..NB-1]
         //     [array=0..1][zresidual=0..P-1][yresidual=0..P-1][x=0..PPD-1]
-        wtimer.Clear();
         wtimer.Start();
 
         int64_t i = 0;
@@ -161,12 +160,11 @@ public:
 
         int64_t totsize = narray*block*block*ppd*sizeof(Complx);
         bytes_written += totsize;
-        printf("StoreBlock took %.3g sec to write %.3g MB ==> %.3g MB/sec\n",
-            wtimer.Elapsed(), totsize/1e6, totsize/1e6/wtimer.Elapsed());
+        //printf("StoreBlock took %.3g sec to write %.3g MB ==> %.3g MB/sec\n",
+        //    wtimer.Elapsed(), totsize/1e6, totsize/1e6/wtimer.Elapsed());
     }
 
     void LoadBlock(int yblock, int zblock, Complx *slab) {
-        rtimer.Clear();
         rtimer.Start();
 
         // We must be sure to access the block sequentially.
@@ -201,8 +199,8 @@ public:
         rtimer.Stop();
         int64_t totsize = narray*block*block*ppd*sizeof(Complx);
         bytes_read += totsize;
-        printf("LoadBlock took %.3g sec to read %.3g MB ==> %.3g MB/sec\n",
-                rtimer.Elapsed(), totsize/1e6, totsize/1e6/rtimer.Elapsed());
+        //printf("LoadBlock took %.3g sec to read %.3g MB ==> %.3g MB/sec\n",
+        //        rtimer.Elapsed(), totsize/1e6, totsize/1e6/rtimer.Elapsed());
 
         return;
     }
@@ -291,9 +289,6 @@ public:
         rtimer.Stop();
         int64_t totsize = narray*block*block*ppd*sizeof(Complx);
         bytes_read += totsize;
-        printf("LoadBlock took %.3g sec to read %.3g MB ==> %.3g MB/sec\n",
-                rtimer.Elapsed(), totsize/1e6, totsize/1e6/rtimer.Elapsed());
-
         return;
     }
 
