@@ -164,7 +164,7 @@ particle plane a single RNG whose state has been fast-forwarded from the
 initial state, and each thread uses that plane's RNG when operating on it.
 
 Version 1 of the code used GSL's Mersenne Twister (which does not support
-jump-ahead0.  This is actually our only GSL dependency, so the code could be compiled
+jump-ahead).  This is actually our only GSL dependency, so the code could be compiled
 without GSL if one didn't care about Version 1 support.
 
 ## PLT eigenmodes
