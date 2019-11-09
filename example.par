@@ -4,10 +4,10 @@
 BoxSize = 720
 CPD = 375
 ICFormat = "RVZel"
-InitialConditionsDirectory = "/path/to/ic/output/dir"
+InitialConditionsDirectory = "./ic_out"
 InitialRedshift = 49
-NP = 2985984000
-ZD_NumBlock = 20
+NP = 2097152
+ZD_NumBlock = 4
 ZD_PLT_filename = "./eigmodes128"
 ZD_PLT_target_z = 5
 ZD_Pk_filename = "wmap1new.pow"
