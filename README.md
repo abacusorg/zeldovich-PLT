@@ -232,7 +232,7 @@ If the `-DDISK` flag is not set (see Makefile Options below), then
 blocks are stored in memory, not disk.  So `NumBlock` matters less
 in that case.
 
-`ZD_Version`: *int*
+`ZD_Version`: *integer*
 The version of the algorithm for generating modes from random numbers.
 The current version is 2, which is the default.  New ICs should
 always use `ZD_Version=2`, but `ZD_Version=1` is available for backwards
