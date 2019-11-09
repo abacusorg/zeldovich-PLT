@@ -282,7 +282,7 @@ public:
             if (y>=ppd/2) yshift=y+1; else yshift=y;
             if (yshift==ppd) yshift=ppd/2;
             // Put it somewhere; this is about to be overwritten
-            bread(&(AZYX(slab,a,zres,yshift,0)),ppd);
+            bread(&(BLK_AZYX(slab,a,zres,yshift,0)),ppd);
         }
         bclose();
 
