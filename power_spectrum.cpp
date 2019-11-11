@@ -27,7 +27,7 @@ public:
             Rnorm = R;
             double retval = sqrt(Romberg(&PowerSpectrum::sigmaR_integrand,0,10.0,target_prec,&precision));
             if(precision > target_prec){
-                printf("Error: actual Romberg integration precision (%g) is greater than the target precision (%g); halting.\n", precision, target_prec);
+                fprintf(stderr,"Error: actual Romberg integration precision (%g) is greater than the target precision (%g); halting.\n", precision, target_prec);
                 exit(1);
             }
             return retval;
@@ -71,7 +71,7 @@ public:
                 TT[jj][k] = TT[jj][k-1] + ( TT[jj][k-1] - TT[jj-1][k-1])/(fourtokm1 -1);
             }
             h *= 0.5;
-            //printf("TT[%d] = %g\n", jj, TT[jj][jj]);
+            //fprintf(stderr,"TT[%d] = %g\n", jj, TT[jj][jj]);
             if(jj>1 && fabs(TT[jj][jj]-TT[jj-1][jj-1])<prec*fabs(TT[jj][jj])) break;
         } while(jj<MAXITER);
 
@@ -91,10 +91,10 @@ public:
         FILE *fp;
         double k,P;
         int nn;
-        printf("Loading power spectrum from file \"%s\"\n", filename);
+        fprintf(stderr,"Loading power spectrum from file \"%s\"\n", filename);
         fp = fopen(filename,"r");
         if(fp == NULL){
-            printf("Power spectrum file \"%s\" not found; exiting.\n", filename);
+            fprintf(stderr,"Power spectrum file \"%s\" not found; exiting.\n", filename);
             exit(1);
         }
         nn=0;
@@ -125,7 +125,7 @@ public:
         assert(!std::isnan(_powerlaw_index));
         powerlaw_index = _powerlaw_index;
         is_powerlaw = 1;
-        printf("Initializing power spectrum with power law index %g\n", powerlaw_index);
+        fprintf(stderr,"Initializing power spectrum with power law index %g\n", powerlaw_index);
 
         Normalize(param);
         return 0;
@@ -137,10 +137,10 @@ public:
 
         // Might still have to normalize things!
         if (param.Pk_norm>0.0) { // Do a normalization 
-            printf("Input sigma(%f) = %f\n", param.Pk_norm, sigmaR(param.Pk_norm));
+            fprintf(stderr,"Input sigma(%f) = %f\n", param.Pk_norm, sigmaR(param.Pk_norm));
             normalization = param.Pk_sigma/sigmaR(param.Pk_norm);
             normalization *= normalization;
-            printf("Final sigma(%f) = %f\n", param.Pk_norm, sigmaR(param.Pk_norm));
+            fprintf(stderr,"Final sigma(%f) = %f\n", param.Pk_norm, sigmaR(param.Pk_norm));
         }
         // Might need to normalize to the box volume.  This is appropriate
         // if the iFFT is like FFTW, i.e., not dividing by N.
@@ -151,7 +151,7 @@ public:
         
         fixed_power = param.qPk_fix_to_mean;
         if (fixed_power)
-            printf("Fixing density mode amplitudes to sqrt(P(k))\n");
+            fprintf(stderr,"Fixing density mode amplitudes to sqrt(P(k))\n");
     }
 
     double power(double wavenumber) {
@@ -189,7 +189,7 @@ public:
         // If fixed_power is set, the complex deviate always has amplitude sqrt(P(k))
         double Pk = this->power(wavenumber);
         double phase1, phase2, r2;
-        // printf("P(%f) = %g\n",wavenumber,Pk);
+        // fprintf(stderr,"P(%f) = %g\n",wavenumber,Pk);
         do { 
             phase1 = one_rand(rng)*2.0-1.0;
             phase2 = one_rand(rng)*2.0-1.0;
@@ -201,7 +201,7 @@ public:
             r2 = sqrt(-Pk*log(r2)/r2);   // Drop the factor of 2, so these Gaussians
                                          // have variance of 1/2.
         }
-        // printf("cgauss: %f %f\n", phase1*r2, phase2*r2);
+        // fprintf(stderr,"cgauss: %f %f\n", phase1*r2, phase2*r2);
         return Complx(phase1*r2,phase2*r2);
     }
 };

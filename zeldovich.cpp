@@ -275,7 +275,7 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
             if(param.qPLT)
                 f = (sqrt(1. + 24*e.val) - 1)*.25; // 1/4 instead of 1/6 because v = alpha*u/t0 = 3/2*H*alpha*u
             
-            // printf("%d %d %d   %d %d %d   %f   %f %f\n",
+            // fprintf(stderr,"%d %d %d   %d %d %d   %f   %f %f\n",
             // x,y,z, kx,ky,kz, k2, real(D), imag(D));
             // H = F = D = 0.0;   // Test that the Hermitian aspects work
             // Now A = D+iF and B = G+iH.  

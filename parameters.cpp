@@ -101,7 +101,7 @@ public:
         unsigned long int longseed = seed;
         if (seed == 0){
             longseed = time(0);
-            printf("Seed 0 will use current time %lu\n", longseed);
+            fprintf(stderr,"Seed 0 will use current time %lu\n", longseed);
         }
         for (int i = 0; i < block; i++){
             rng[i] = gsl_rng_alloc(T);
@@ -151,8 +151,8 @@ int Parameters::setup() {
     double npcr = pow(np,1.0/3.0);
     ppd = (long long int) floor(npcr+0.5);
     if(ppd - npcr > .0001){
-        printf("ppd: %d\n",ppd);
-        printf("npcr: %5.4f\n", npcr);
+        fprintf(stderr,"ppd: %d\n",ppd);
+        fprintf(stderr,"npcr: %5.4f\n", npcr);
 
         assert(ppd - npcr < .0001);
     }
@@ -161,7 +161,7 @@ int Parameters::setup() {
     if(k_cutoff != 1.){
         int numblock_old = numblock;
         numblock = numblock*k_cutoff + .5; // Ensure rounding
-        printf("Note: using k_cutoff=%f means that we are using NumBlock=%d instead of the supplied value of NumBlock=%d\n", k_cutoff, numblock, numblock_old);
+        fprintf(stderr,"Note: using k_cutoff=%f means that we are using NumBlock=%d instead of the supplied value of NumBlock=%d\n", k_cutoff, numblock, numblock_old);
     }
 
     // Check for illegal values
@@ -188,7 +188,7 @@ int Parameters::setup() {
     fundamental = 2.0*M_PI/boxsize;    // The k spacing
     
     if(qonemode)
-        printf("one_mode: %d, %d, %d\n",one_mode[0],one_mode[1],one_mode[2]);
+        fprintf(stderr,"one_mode: %d, %d, %d\n",one_mode[0],one_mode[1],one_mode[2]);
     
     return 0;
 }

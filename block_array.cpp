@@ -96,7 +96,7 @@ public:
         sprintf(filename,"%s/zeldovich.%1d.%1d",TMPDIR,yblock,zblock);
 
         fp = fopen(filename,mode);
-        if(fp == NULL) printf("bad filename: %s\n",filename);
+        if(fp == NULL) fprintf(stderr,"bad filename: %s\n",filename);
         assert(fp!=NULL);
         
         return;
