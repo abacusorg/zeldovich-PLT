@@ -7,7 +7,7 @@ public:
     double boxsize;     // Units for the simulation box
     double Pk_scale;    // A rescaling in case the simulation units 
     // are different from the P(k) input file units
-    int ppd;        // The size of the simulation grid to generate
+    int64_t ppd;        // The size of the simulation grid to generate
     int cpd;
     long long int np;
     int numblock;    // The number of blocks to divide this into.
@@ -42,7 +42,13 @@ public:
     char ICFormat[1024]; // Abacus's expected input format (i.e. our output format)
     
     int ramdisk; // If -DDIRECTIO, need to know if we're on a ramdisk
-    
+
+    // Version of the algorithm for getting modes from RNG
+    // This directly impacts the phases you get out.
+    // Use version = 2 unless you need backwards compatibility with old ICs,
+    // in which case use version = 1 (but beware the phases will depend
+    // on ZD_NumBlock)
+    int version;
 
     int setup();
     // Check against the defaults; complain if something is missing.
@@ -77,6 +83,7 @@ public:
         k_cutoff = 1.; // Legal default (corresponds to k_nyquist)
         strcpy(ICFormat,""); // Illegal default
         ramdisk = 0;  // Legal default for most cases
+        version = -1;  // All new ICs should use verison 2 (default), but version 1 is available for backwards compatibility
         
         // Read the paramater file values
         register_vars();
@@ -89,27 +96,18 @@ public:
             std::cout <<"Invalid Parameters given \n";
             exit(1);
         }
-
-        // Set up RNGs, one per plane per block, to support parallelism
-        const gsl_rng_type * T;
-        gsl_rng_env_setup();
-        T = gsl_rng_mt19937; //The mersene twister
-        int block = ppd/numblock;
-        rng = new gsl_rng *[block];
-        
-        //seed the rng. a seed of zero uses the current time
-        unsigned long int longseed = seed;
-        if (seed == 0){
-            longseed = time(0);
-            fprintf(stderr,"Seed 0 will use current time %lu\n", longseed);
-        }
-        for (int i = 0; i < block; i++){
-            rng[i] = gsl_rng_alloc(T);
-            gsl_rng_set(rng[i], longseed+i);
-        }
     }
     ~Parameters() {
         inputstream->Close();
+
+        if(version == 1){
+            for(int64_t i = 0; i < ppd/numblock; i++)
+                gsl_rng_free(v1rng[i]);
+            delete[] v1rng;
+        }
+        else{
+            delete[] v2rng;
+        }
     }
 
     void register_vars(void) {
@@ -139,6 +137,7 @@ public:
         installscalar("ZD_k_cutoff",k_cutoff,DONT_CARE);
         installscalar("ICFormat",ICFormat,MUST_DEFINE);
         installscalar("RamDisk",ramdisk,DONT_CARE);
+        installscalar("ZD_Version",version,DONT_CARE);
     }
 
 
@@ -147,21 +146,42 @@ public:
 int Parameters::setup() {
     // Compute any derived quantities.  Look for errors.
     // Return 0 if all is well, 1 if this failed.
-    
-    double npcr = pow(np,1.0/3.0);
-    ppd = (long long int) floor(npcr+0.5);
-    if(ppd - npcr > .0001){
-        fprintf(stderr,"ppd: %d\n",ppd);
-        fprintf(stderr,"npcr: %5.4f\n", npcr);
 
-        assert(ppd - npcr < .0001);
+    if(version == -1){
+        fprintf(stderr,R"(
+*** ERROR: ZD_Version was not specified for zeldovich-PLT.  New ICs should
+    specify ZD_Version = 2; legacy ICs (pre-November 2019) should use
+    ZD_Version = 1 to reproduce the old phases.  Please specify one of
+    these in the parameter file.
+)");
+        exit(1);
+    }
+
+    assert(version == 1 || version == 2);
+
+    if(version == 1){
+        fprintf(stderr,R"(
+*** WARNING: zeldovich-PLT is being invoked with ZD_Version = 1.
+    This means that the output phases depend on the ZD_NumBlock tuning parameter,
+    so version 1 should only be used for backwards compatibility.  Use ZD_Version = 2
+    for new ICs.
+
+)");
     }
     
-    // This is critical for random number synchronization among different ppd
-    if(k_cutoff != 1.){
-        int numblock_old = numblock;
-        numblock = numblock*k_cutoff + .5; // Ensure rounding
-        fprintf(stderr,"Note: using k_cutoff=%f means that we are using NumBlock=%d instead of the supplied value of NumBlock=%d\n", k_cutoff, numblock, numblock_old);
+    ppd = (int64_t) round(cbrt(np));
+    fprintf(stderr,"Generating ICs for ppd = %lu\n", ppd);
+    assert(ppd*ppd*ppd == np);
+    assert(ppd <= MAX_PPD);
+    
+    // NumBlock is only modified in version 1
+    if(version == 1){
+        // This is critical for random number synchronization among different ppd
+        if(k_cutoff != 1.){
+            int numblock_old = numblock;
+            numblock = numblock*k_cutoff + .5; // Ensure rounding
+            fprintf(stderr,"Note: using k_cutoff=%f means that we are using NumBlock=%d instead of the supplied value of NumBlock=%d\n", k_cutoff, numblock, numblock_old);
+        }
     }
 
     // Check for illegal values
@@ -189,14 +209,36 @@ int Parameters::setup() {
     
     if(qonemode)
         fprintf(stderr,"one_mode: %d, %d, %d\n",one_mode[0],one_mode[1],one_mode[2]);
+
+    // Set up multiple RNGs to support parallelism and over-/down-sampling
+    
+    //seed the rng. a seed of zero uses the current time
+    unsigned long int longseed = seed;
+
+    if(version == 1){
+        int block = ppd/numblock;
+        v1rng = new gsl_rng*[block];
+
+        for (int i = 0; i < block; i++){
+            v1rng[i] = gsl_rng_alloc(gsl_rng_mt19937);
+            gsl_rng_set(v1rng[i], longseed+i);
+        }
+    } else {
+        // We'll make ppd/2 independent y-planes
+        // But we do so by fast-forwarding the base RNG,
+        // so logically this is just a single output stream from the RNG
+        v2rng = new pcg64[ppd/2];
+        v2rng[0] = pcg64(longseed);
+        for(int i = 1; i < ppd/2; i++){
+            v2rng[i] = v2rng[i-1];
+            // Each plane is ppd^2 complexes
+            v2rng[i].advance(2*MAX_PPD*MAX_PPD);
+        }
+    }
     
     return 0;
 }
 
-void Parameters::print(FILE *fp, const char *datatype) {
-    print(fp);
-    return;
-}
 void Parameters::print(FILE *fp) {
     // Print the results
     time_t t = time(0);

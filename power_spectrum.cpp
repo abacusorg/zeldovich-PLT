@@ -36,17 +36,12 @@ public:
             // Use the analytic power law solution
             // See: http://nbviewer.jupyter.org/gist/lgarrison/7e41ee280c57554e256b834ac5c3f753
             double n = powerlaw_index;
-            double retval = 9*pow(R,-n-3)*pow(2,-n-1)/(M_PI*M_PI*(n-3));
-            if((int)round(n) % 2 == 0.)
-                retval *= -(1+n)*M_PI/(2*tgamma(2-n)*cos(M_PI*n/2));
-            else
-                retval *= sin(n*M_PI/2)*tgamma(n+2)/((n-1)*n);
-            
+            double retval = 9*pow(R,-n-3)/(2*M_PI*sqrt(M_PI)) * tgamma((3+n)/2.)/(tgamma((2-n)/2.)*(n-3)*(n-1));
             retval = sqrt(retval*normalization);
             return retval;
         }
     }
-    // Do Romberg integration with up to 25 bisections.
+    // Do Romberg integration with up to MAXITER bisections.
     // Give a precision 'prec'.  Also return the estimated precision in 'obtprec'.
 
     #define MAXITER 32
@@ -169,39 +164,111 @@ public:
         } else {
             static bool already_warned = false;
             if (wavenumber > kmax && !already_warned) {
-                fprintf(stderr, "\n*** WARNING: power spectrum spline interpolation was requested\n"
-                                "    past the maximum k (%f) that was provided in the input power\n"
-                                "    spectrum file.  The extrapolation should be well-behaved, but\n"
-                                "    make sure that this was expected.  Provide a power spectrum\n"
-                                "    that goes to k=10 to get rid of this warning.\n", kmax);
+                fprintf(stderr, R"(
+*** WARNING: power spectrum spline interpolation was requested
+    past the maximum k (%f) that was provided in the input power
+    spectrum file.  The extrapolation should be well-behaved, but
+    make sure that this was expected.  Provide a power spectrum
+    that goes to at least k=10 (or higher if your k_Nyquist demands
+    it) to get rid of this warning.
+
+)", kmax);
                 already_warned = true;
             }
             return exp(this->val(log(wavenumber))-wavenumber*wavenumber*this->Pk_smooth2)*normalization;
         }
     }
 
-    double one_rand(int i) {
-        return gsl_rng_uniform(rng[i]);
-    }
-    Complx cgauss(double wavenumber, int rng) {
-        // Return a gaussian complex deviate scaled to the sqrt of the power
-        // Box-Muller, adapted from Numerical Recipes
-        // If fixed_power is set, the complex deviate always has amplitude sqrt(P(k))
-        double Pk = this->power(wavenumber);
-        double phase1, phase2, r2;
-        // fprintf(stderr,"P(%f) = %g\n",wavenumber,Pk);
-        do { 
-            phase1 = one_rand(rng)*2.0-1.0;
-            phase2 = one_rand(rng)*2.0-1.0;
-            r2 = phase1*phase1+phase2*phase2;
-        } while (!(r2<1.0&&r2>0.0));
-        if (fixed_power){
-            r2 = sqrt(Pk/r2);
-        } else {
-            r2 = sqrt(-Pk*log(r2)/r2);   // Drop the factor of 2, so these Gaussians
-                                         // have variance of 1/2.
-        }
-        // fprintf(stderr,"cgauss: %f %f\n", phase1*r2, phase2*r2);
-        return Complx(phase1*r2,phase2*r2);
-    }
+    template <int Ver>
+    double one_rand(int64_t i);
+
+    template <int Ver>
+    Complx cgauss(double wavenumber, int64_t rng);
 };
+
+
+// ZD_Version 1
+template <>
+double PowerSpectrum::one_rand<1>(int64_t i) {
+    return gsl_rng_uniform(v1rng[i]);
+}
+
+// ZD_Version 2
+// Returns a random double in (0,1]
+template <>
+double PowerSpectrum::one_rand<2>(int64_t i) {
+
+    uint64_t r = v2rng[i]();
+
+    // Can't return 0!  That will immediately break the log in Box-Muller
+    // But 1.0 is a valid value, so we can just add 1 to everything
+    // thus shifting the domain from [0,1) to (0,1]
+    // But first check if adding 1 would overflow
+    if(r == UINT64_MAX)
+        return 1.;
+
+    // Is (0,1] the correct range, or (0,1)?
+    // Consider cos(2*pi*r), where we want the full period to be sampled.
+    // If we don't return 0, then we should return 1, so the "phase origin" can be sampled.
+    // That's a simplification, but if we're wrong it's only by 1 part in 2**64
+    r += (uint64_t) 1;
+
+    // Turn the uint64 into a double
+    // Converting to a double and dividing by 2^64 is not the best way
+    // to use the full range of double values between 0 and 1,
+    // but probably not at a level we care about.
+    // See http://mumble.net/~campbell/tmp/random_real.c
+    // or http://allendowney.com/research/rand/downey07randfloat.pdf
+    return ldexp(r,-64);
+}
+
+template <>
+Complx PowerSpectrum::cgauss<1>(double wavenumber, int64_t rng) {
+    // Return a gaussian complex deviate scaled to the sqrt of the power
+    // Box-Muller, adapted from Numerical Recipes
+    // If fixed_power is set, the complex deviate always has amplitude sqrt(P(k))
+
+    double Pk = this->power(wavenumber);
+    double phase1, phase2, r2;
+    // fprintf(stderr,"P(%f) = %g\n",wavenumber,Pk);
+    do { 
+        phase1 = one_rand<1>(rng)*2.0-1.0;
+        phase2 = one_rand<1>(rng)*2.0-1.0;
+        r2 = phase1*phase1+phase2*phase2;
+    } while (!(r2<1.0&&r2>0.0));
+    if (fixed_power){
+        r2 = sqrt(Pk/r2);
+    } else {
+        r2 = sqrt(-Pk*log(r2)/r2);   // Drop the factor of 2, so these Gaussians
+                                     // have variance of 1/2.
+    }
+    // fprintf(stderr,"cgauss: %f %f\n", phase1*r2, phase2*r2);
+    return Complx(phase1*r2,phase2*r2);
+}
+
+// ZD_Version 2 must use this "deterministic" version of Box-Muller,
+// which is guaranteed to make exactly 2 RNG calls (unlike the rejection
+// sampling method in Version 1).  In theory, the trig calls make this way
+// slower, but in practice the FFTs, IO, and memory movement dominate the runtime
+template <>
+Complx PowerSpectrum::cgauss<2>(double wavenumber, int64_t rng) {
+    // Return a gaussian complex deviate scaled to the sqrt of the power
+    // Box-Muller, adapted from Numerical Recipes
+    // If fixed_power is set, the complex deviate always has amplitude sqrt(P(k))
+
+    double Pk = this->power(wavenumber);
+    double R = one_rand<2>(rng);
+    double theta = one_rand<2>(rng);
+
+    // Standard Box-Muller without the factor of 2
+    if(!fixed_power)
+        R = sqrt(-Pk*log(R));
+    else
+        R = sqrt(Pk);
+    theta = 2*M_PI*theta;
+
+    double g1 = R*cos(theta);
+    double g2 = R*sin(theta);
+
+    return Complx(g1,g2);
+}

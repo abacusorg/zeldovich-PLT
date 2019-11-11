@@ -5,12 +5,17 @@ ROOT_DIR := ..
 CXX ?= g++
 # Set DISK if you want to run the big BlockArray explicitly out of core.
 # Set -DDIRECTIO and -I../Convolution if you want to use lib_dio
-CXXFLAGS ?= -O3 -fopenmp -march=native -Wall 
+CXXFLAGS ?= -O3 -g -fopenmp -march=native -std=c++11
+CXXFLAGS += -Wall
 PARSEHEADER_CPPFLAGS ?= -I ParseHeader
 PARSEHEADER_LIBS ?= -L ParseHeader -lparseheader
-CPPFLAGS += -DDISK $(THREAD_CPPFLAGS) $(PARSEHEADER_CPPFLAGS)
 
-LIBS = $(PARSEHEADER_LIBS) -lfftw3 -lgsl -lgslcblas -lstdc++
+GSL_LIBS ?= $(shell gsl-config --libs)
+GSL_CPPFLAGS ?= $(shell gsl-config --cflags)
+
+CPPFLAGS += $(THREAD_CPPFLAGS) $(PARSEHEADER_CPPFLAGS) $(GSL_CPPFLAGS) -DDISK
+
+LIBS += $(PARSEHEADER_LIBS) -lfftw3 $(GSL_LIBS) -lstdc++
 
 all: zeldovich 
 
@@ -22,17 +27,17 @@ zeldovich.o: zeldovich.cpp
 
 -include zeldovich.d
 
-rng_test: rng_test.c
-	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $^ -o $@ $(LIBS)
-
-run_rng_test: rng_test | zeldovich
-	@./rng_test | cmp rng_test.out - && (echo 'Passed RNG test.') || (echo 'Error: your platform did not produce the expected RNG values, and may thus generate IC files with unexpected phases.' ; exit 1)
-
-.PHONY: all clean distclean run_rng_test default
+.PHONY: all clean distclean default
 clean:
 	$(MAKE) -C ParseHeader $@
 	$(RM) *.o *.gch *~
 
 distclean: clean
 	$(MAKE) -C ParseHeader $@
-	$(RM) zeldovich rng_test *.d
+	$(RM) zeldovich *.d
+
+ifndef HAVE_COMMON_MK
+ParseHeader: ParseHeader/libparseheader.a
+ParseHeader/libparseheader.a:
+	$(MAKE) -C ParseHeader libparseheader.a
+endif
