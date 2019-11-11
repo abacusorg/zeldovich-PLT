@@ -162,7 +162,8 @@ BlockArray& array, Parameters& param) {
 int CleanDirectory(const char *path);
 int CreateDirectories(const char *path);
 
-void InitOutput(Parameters &param){
+// Returns GiB size of allocated buffer
+double InitOutput(Parameters &param){
     CleanDirectory(param.output_dir);
     CreateDirectories(param.output_dir);
 
@@ -183,6 +184,8 @@ void InitOutput(Parameters &param){
         fprintf(stderr, "Error: unknown ICFormat \"%s\". Aborting.\n", param.ICFormat);
         exit(1);
     }
+
+    return sizeof_outputtype*param.ppd*param.ppd/1024./1024./1024.;
 }
 
 void TeardownOutput(){

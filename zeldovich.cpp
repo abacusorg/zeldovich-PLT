@@ -560,14 +560,18 @@ int main(int argc, char *argv[]) {
     int narray = param.qPLT ? 4 : 2;
     memory = CUBE(param.ppd/1024.0)*narray*sizeof(Complx);
 
+    // Remove any existing IC files
+    double _outbufferGiB = InitOutput(param);
+
 #ifdef DISK
     printf("Compiled with -DDISK; blocks will be buffered on disk.\n");
     printf("Total (out-of-core) memory usage: %5.3f GiB\n", memory);
-    printf("Two slab (in-core) memory usage: %5.3f GiB\n", memory/param.numblock*2.0 + memory/param.numblock/param.numblock);  // extra from StoreBlock_tmp
+    printf("Two slab (in-core) memory usage: %5.3f GiB\n",
+        memory/param.numblock*2.0 + memory/param.numblock/param.numblock + _outbufferGiB);  // extra from StoreBlock_tmp
     printf("Block file size: %5.3f GiB\n", memory/param.numblock/param.numblock);
 #else
     printf("Not compiled with -DDISK; whole problem will reside in memory.\n");
-    printf("Total memory usage: %5.3f GiB\n", memory + memory/param.numblock*2.0);  // extra is from 2 blocks in ZeldovichZ
+    printf("Total memory usage: %5.3f GiB\n", memory + memory/param.numblock*2.0 + _outbufferGiB);  // extra is from 2 blocks in ZeldovichZ
     printf("Two slab memory usage: %5.3f GiB\n", memory/param.numblock*2.0);
     printf("Block size: %5.3f GiB\n", memory/param.numblock/param.numblock);
 #endif
@@ -586,10 +590,6 @@ int main(int argc, char *argv[]) {
     }
 
     Setup_FFTW(param.ppd);
-
-    // We're about to start the BlockArray, thus using the disk
-    // Remove any existing IC files
-    InitOutput(param);
 
     BlockArray array(param.ppd,param.numblock,narray,param.output_dir,param.ramdisk);
     ZeldovichZ(array, param, Pk);
