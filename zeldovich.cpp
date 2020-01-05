@@ -589,9 +589,10 @@ int main(int argc, char *argv[]) {
         fprintf(stderr,"Using k_cutoff = %f (effective ppd = %d)\n", param.k_cutoff, (int)(param.ppd/param.k_cutoff+.5));
     }
 
+    BlockArray array(param.ppd,param.numblock,narray,param.output_dir,param.ramdisk);
+
     Setup_FFTW(param.ppd);
 
-    BlockArray array(param.ppd,param.numblock,narray,param.output_dir,param.ramdisk);
     ZeldovichZ(array, param, Pk);
 
     output = 0; // Current implementation doesn't use user-provided output
