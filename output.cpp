@@ -60,7 +60,7 @@ BlockArray& array, Parameters& param) {
     // No care has been paid to the normalization of the velocity;
     // this is simply the displacement field.  However, this does happen
     // to be v/H, which is correct for the redshift-space displacement in EdS
-    norm = 1.0; densitynorm = 1.0; vnorm = 1.0;
+    norm = 1.0; densitynorm = 1.0; vnorm = param.f_growth;
     //norm = 1e-2;
 
     int64_t i = 0;
