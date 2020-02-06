@@ -326,8 +326,14 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
                 G = rescale*I*e.vec[1]/k2*D;
                 H = rescale*I*e.vec[2]/k2*D;
                 
-                if(param.qPLT)
-                    f = (sqrt(1. + 24*e.val) - 1)*.25; // 1/4 instead of 1/6 because v = alpha*u/t0 = 3/2*H*alpha*u
+                if(param.qPLT){
+                    // This is f_growth, the logarithmic derivative of the growth factor that scales the velocities
+                    // The corrections are sourced from:
+                    // 1) PLT growth rate
+                    // 2) Addition of a smooth, non-clustering component to the background (<= NOT A PLT EFFECT)
+                    // If PLT is turned on, we have to combine the effects here.  If not, we apply f_cluster during output.
+                    f = (sqrt(1. + 24*e.val*param.f_cluster) - 1)*.25; // 1/4 instead of 1/6 because v = alpha*u/t0 = 3/2*H*alpha*u
+                }
             } else {
                 F = G = H = f = 0.;
             }

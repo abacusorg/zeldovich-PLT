@@ -60,7 +60,18 @@ BlockArray& array, Parameters& param) {
     // No care has been paid to the normalization of the velocity;
     // this is simply the displacement field.  However, this does happen
     // to be v/H, which is correct for the redshift-space displacement in EdS
-    norm = 1.0; densitynorm = 1.0; vnorm = param.f_growth;
+    norm = 1.0; densitynorm = 1.0;
+    
+    // We may also need to apply an f_growth factor to the velocities
+    // from the addition of a smooth, non-clustering background component
+    // (indicated by f_cluster != 1)
+    // If we used PLT, then we took care of this while computing
+    // the PLT growth rate effects.  If not, take care of it here.
+    if(param.qPLT){
+        vnorm = 1.0;
+    } else {
+        vnorm = (sqrt(1. + 24*param.f_cluster) - 1)*.25;
+    }
     //norm = 1e-2;
 
     int64_t i = 0;
