@@ -319,15 +319,24 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
                 if(param.qPLTrescale){
                     double a_NL = 1./(1+param.PLT_target_z);
                     double a0 = 1./(1+param.z_initial);
-                    double alpha_m = (sqrt(1. + 24*e.val) - 1)/6.;
-                    rescale = pow(a_NL/a0, 1 - 1.5*alpha_m);
+                    // First is continuum linear theory growth rate, possibly including f_smooth
+                    // Second is PLT growth rate, also including f_smooth
+                    double target_f = (sqrt(1. + 24*param.f_cluster) - 1)/4.;
+                    double plt_f = (sqrt(1. + 24*e.val*param.f_cluster) - 1)/4.;
+                    rescale = pow(a_NL/a0, target_f - plt_f);
                 }
                 F = rescale*I*e.vec[0]/k2*D;
                 G = rescale*I*e.vec[1]/k2*D;
                 H = rescale*I*e.vec[2]/k2*D;
                 
-                if(param.qPLT)
-                    f = (sqrt(1. + 24*e.val) - 1)*.25; // 1/4 instead of 1/6 because v = alpha*u/t0 = 3/2*H*alpha*u
+                if(param.qPLT){
+                    // This is f_growth, the logarithmic derivative of the growth factor that scales the velocities
+                    // The corrections are sourced from:
+                    // 1) PLT growth rate
+                    // 2) Addition of a smooth, non-clustering component to the background (<= NOT A PLT EFFECT)
+                    // If PLT is turned on, we have to combine the effects here.  If not, we apply f_cluster during output.
+                    f = (sqrt(1. + 24*e.val*param.f_cluster) - 1)*.25; // 1/4 instead of 1/6 because v = alpha*u/t0 = 3/2*H*alpha*u
+                }
             } else {
                 F = G = H = f = 0.;
             }

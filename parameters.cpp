@@ -22,6 +22,8 @@ public:
     int seed;    // Random number seed
     double Pk_norm;    // The scale to normalize P(k) at, in simulation units!
     double Pk_sigma;    // The normalization at that scale, at the initial redshift!
+    double Pk_sigma_ratio;    // An alternative to Pk_sigma: a ratio by which to normalize, instead of a target amplitude
+    double f_cluster;  // The fraction of the matter that is clustering.  Usually 1 without neutrinos, and 1 - Omega_Smooth/Omega_M with.
     double Pk_smooth;    // The scale to smooth P(k) at, in simulation units!
     int qPk_fix_to_mean;    // Don't draw the mode amplitude from a Gaussian; use sqrt(P(k)) instead.
     char Pk_filename[200];   // The file name for the P(k) input
@@ -68,6 +70,8 @@ public:
         qoneslab = -1;    // Legal default
         Pk_norm = 0;    // Legal default: Don't renormalize the power spectrum
         Pk_sigma = 0;    // Legal default, but you probably don't want this!
+        Pk_sigma_ratio = 0;    // Legal default
+        f_cluster = 1;  // Legal default
         Pk_smooth = 0;    // Legal default
         qPk_fix_to_mean = 0; // Legal default
         seed = 0;    // Legal default
@@ -120,7 +124,9 @@ public:
         installscalar("ZD_qoneslab",qoneslab,DONT_CARE);
         installscalar("ZD_Seed",seed,MUST_DEFINE);
         installscalar("ZD_Pk_norm",Pk_norm,MUST_DEFINE);
-        installscalar("ZD_Pk_sigma",Pk_sigma,MUST_DEFINE);
+        installscalar("ZD_Pk_sigma",Pk_sigma,DONT_CARE);
+        installscalar("ZD_Pk_sigma_ratio",Pk_sigma_ratio,DONT_CARE);
+        installscalar("ZD_f_cluster",f_cluster,DONT_CARE);
         installscalar("ZD_Pk_smooth",Pk_smooth,MUST_DEFINE);
         installscalar("ZD_qPk_fix_to_mean",qPk_fix_to_mean,DONT_CARE);
         installscalar("ZD_Pk_filename",Pk_filename,DONT_CARE);
@@ -190,7 +196,14 @@ int Parameters::setup() {
     assert(! (numblock<=0) );
     assert(! (Pk_scale<=0.0) );
     assert(! (Pk_norm<0.0) );
-    assert(! (Pk_sigma<0.0) );
+
+    if((bool)(Pk_sigma > 0) == (bool)(Pk_sigma_ratio > 0)){
+        fprintf(stderr, "Must specify exactly one of Pk_sigma or Pk_sigma_ratio!\n");
+        exit(1);
+    }
+
+    assert(f_cluster > 0. && f_cluster <= 1.);  // Anything outside this range is probably a bug
+
     // Must specify exactly one of Pk file or power law index
     assert( (bool)(strlen(Pk_filename) > 0) != (bool) !std::isnan(Pk_powerlaw_index) );
     if(!std::isnan(Pk_powerlaw_index))

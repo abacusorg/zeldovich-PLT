@@ -133,8 +133,17 @@ public:
         // Might still have to normalize things!
         if (param.Pk_norm>0.0) { // Do a normalization 
             fprintf(stderr,"Input sigma(%f) = %f\n", param.Pk_norm, sigmaR(param.Pk_norm));
-            normalization = param.Pk_sigma/sigmaR(param.Pk_norm);
-            normalization *= normalization;
+
+            if(param.Pk_sigma > 0){
+                normalization = param.Pk_sigma/sigmaR(param.Pk_norm);
+                normalization *= normalization;
+            } else if (param.Pk_sigma_ratio > 0) {
+                normalization = param.Pk_sigma_ratio*param.Pk_sigma_ratio;
+            }
+            else{
+                assert(param.Pk_sigma > 0 || param.Pk_sigma_ratio > 0);  // Illegal state! We checked this in the params
+            }
+
             fprintf(stderr,"Final sigma(%f) = %f\n", param.Pk_norm, sigmaR(param.Pk_norm));
         }
         // Might need to normalize to the box volume.  This is appropriate
