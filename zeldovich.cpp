@@ -319,8 +319,11 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
                 if(param.qPLTrescale){
                     double a_NL = 1./(1+param.PLT_target_z);
                     double a0 = 1./(1+param.z_initial);
-                    double alpha_m = (sqrt(1. + 24*e.val) - 1)/6.;
-                    rescale = pow(a_NL/a0, 1 - 1.5*alpha_m);
+                    // First is continuum linear theory growth rate, possibly including f_smooth
+                    // Second is PLT growth rate, also including f_smooth
+                    double target_f = (sqrt(1. + 24*param.f_cluster) - 1)/4.;
+                    double plt_f = (sqrt(1. + 24*e.val*param.f_cluster) - 1)/4.;
+                    rescale = pow(a_NL/a0, target_f - plt_f);
                 }
                 F = rescale*I*e.vec[0]/k2*D;
                 G = rescale*I*e.vec[1]/k2*D;
