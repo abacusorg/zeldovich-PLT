@@ -1,5 +1,5 @@
 # Load Abacus's make settings if available
-ROOT_DIR := ..
+ROOT_DIR := $(ABACUS)
 -include $(ROOT_DIR)/common.mk
 
 CXX ?= g++
