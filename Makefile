@@ -1,3 +1,11 @@
+# touch a FREEZE file to prevent the Makefile from doing anything
+# Useful for mixed architecture platforms like Summit and Rhea
+FREEZE := $(wildcard FREEZE)
+
+ifneq (,$(FREEZE))
+all:
+else
+
 # Load Abacus's make settings if available
 ROOT_DIR := $(ABACUS)
 -include $(ROOT_DIR)/common.mk
@@ -41,3 +49,5 @@ ParseHeader: ParseHeader/libparseheader.a
 ParseHeader/libparseheader.a:
 	$(MAKE) -C ParseHeader libparseheader.a
 endif
+
+endif  # freeze
