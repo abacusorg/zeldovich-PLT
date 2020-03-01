@@ -1,4 +1,5 @@
 #include "STimer.cc"
+#include <mutex>
 
 // We use a set of X-Z arrays of Complx numbers (ordered by A and Y).
 // ppd is 64-bit, so this expression should be safe from overflow
@@ -10,25 +11,25 @@ class BlockArray {
     // double complex data[zblock=0..NB-1][yblock=0..NB-1]
     //     [arr=0..1][zresidual=0..P-1][yresidual=0..P-1][x=0..PPD-1]
     unsigned long long size;
-    
-    STimer wtimer;  // write timer
-    STimer rtimer;  // read timer
-    int64_t bytes_written = 0;
-    int64_t bytes_read = 0;
+    std::mutex array_mutex;
 
 #ifndef DISK
     Complx *arr;   // But this array may never be allocated!
 #endif
-
+    
 public:
+    // These are some stats to accumulate
+    STimer wtimer;  // write timer
+    STimer rtimer;  // read timer
+    int64_t bytes_written = 0;
+    int64_t bytes_read = 0;
+    int files_written = 0;
+
     int numblock, block;
     int64_t ppd;  // Making ppd a 64-bit integer avoids trouble with ppd^3 int32_t overflow
     int64_t narray;  // Make int64 to avoid overflow in later calculations
     char TMPDIR[1024];
     int ramdisk;
-#ifdef DISK
-    Complx *StoreBlock_tmp;  // One extra block for fast transposes
-#endif
 
     BlockArray(int _ppd, int _numblock, int _narray, char *_dir, int _ramdisk) {
         ppd = (int64_t) _ppd;
@@ -43,11 +44,10 @@ public:
         ramdisk = _ramdisk;  // just to silence the compiler; might be overriden below
 
 #ifdef DISK
-        StoreBlock_tmp = new Complx[(int64_t)narray*block*block*ppd];
-#ifdef DIRECTIO
+    #ifdef DIRECTIO
         fileoffset = 0;
         diskbuffer = 1024*512;  // Magic number pulled from io_dio.cpp
-#endif
+    #endif
 #else
         arr = new Complx[size];
 #endif
@@ -68,11 +68,10 @@ public:
     }
     ~BlockArray() {
 #ifdef DISK
-        delete[] StoreBlock_tmp;
-
         // Clean up the "zeldovich.*.*" files
         for(int yblock = 0; yblock < numblock; yblock++){
             for(int zblock = 0; zblock < numblock; zblock++){
+                char filename[1024];
                 int n = snprintf(filename, 1024, "%s/zeldovich.%1d.%1d",TMPDIR,yblock,zblock);
                 assert(n < 1024);
                 remove(filename);
@@ -89,11 +88,12 @@ public:
 #endif
     }
 
-#ifdef DISK
-#ifdef DIRECTIO
-        // These routines are for DIRECTIO
 private:
-    char filename[1024];
+    // char filename[1024];
+    // Next we provide two kinds of DISK I/O, one with fwrite and one with DIRECTIO
+#ifdef DISK
+  #ifdef DIRECTIO
+        // These routines are for DIRECTIO
     off_t fileoffset;
     int diskbuffer;
 
@@ -101,6 +101,7 @@ private:
         // DirectIO actually opens and closes the files on demand, so we don't need to open the file here
         assert(yblock>=0&&yblock<numblock);
         assert(zblock>=0&&zblock<numblock);
+        char filename[1024];
         sprintf(filename,"%s/zeldovich.%1d.%1d",TMPDIR,yblock,zblock);
         FILE * outfile = fopen(filename,"a");
         assert(outfile != NULL);
@@ -123,18 +124,49 @@ private:
         RD.BlockingRead( filename, (char*)buffer, sizebytes, fileoffset);
         fileoffset += sizebytes;
     }
-#else
+  #else
     // These routines are for reading blocks on and off disk without DIRECTIO
 private: 
-    FILE *fp;
-    char filename[1024];
+
+private:
+
+    FILE *bopen(int yblock, int zblock, const char *mode) {
+        // Set up for reading or writing this block
+        assert(yblock>=0&&yblock<numblock);
+        assert(zblock>=0&&zblock<numblock);
+        char filename[1024];
+        sprintf(filename,"%s/zeldovich.%1d.%1d",TMPDIR,yblock,zblock);
+
+        FILE *fp;
+        fp = fopen(filename,mode);
+        if(fp == NULL) fprintf(stderr,"bad filename: %s\n",filename);
+        assert(fp!=NULL);
+        
+        return fp;
+    }
+    void bclose(FILE *fp) { fclose(fp); return; }
+    void bwrite(FILE *fp, Complx *buffer, size_t num) {
+        // Write num Complx numbers to the buffer, increment the pointer
+        fwrite(buffer,sizeof(Complx),num,fp);
+    }
+    void bread(FILE *fp, Complx *buffer, size_t num) {
+        // Read num Complx numbers into the buffer, increment the pointer
+        size_t nread = fread(buffer,sizeof(Complx),num,fp);
+        assert(nread == num);
+    }
+  #endif
 
 public:
     void StoreBlock(int yblock, int zblock, Complx *slab) {
         // We must be sure to store the block sequentially.
         // data[zblock=0..NB-1][yblock=0..NB-1]
         //     [array=0..1][zresidual=0..P-1][yresidual=0..P-1][x=0..PPD-1]
-        wtimer.Start();
+        STimer thiswtimer;  // write timer
+        thiswtimer.Start();
+        int64_t totsize = narray*block*block*ppd;
+        Complx *StoreBlock_tmp;  // One extra block for fast transposes
+        int ret = posix_memalign((void **)&StoreBlock_tmp, 4096, totsize*sizeof(Complx));
+        assert(ret==0);
 
         int64_t i = 0;
 
@@ -150,22 +182,27 @@ public:
                 }
             }
 
-        assert(i == (int64_t)narray*block*block*ppd);
+        assert(i == totsize);
 
-        bopen(yblock,zblock,"w");
-        bwrite(StoreBlock_tmp, narray*block*block*ppd);
-        bclose();
+        FILE *fp = bopen(yblock,zblock,"w");
+        bwrite(fp, StoreBlock_tmp, totsize);
+        bclose(fp);
+        free(StoreBlock_tmp);
 
-        wtimer.Stop();
+        thiswtimer.Stop();
 
-        int64_t totsize = narray*block*block*ppd*sizeof(Complx);
-        bytes_written += totsize;
+        array_mutex.lock();
+        wtimer.increment(thiswtimer.timer);
+        bytes_written += totsize*sizeof(Complx);
+        files_written++;
         //printf("StoreBlock took %.3g sec to write %.3g MB ==> %.3g MB/sec\n",
         //    wtimer.Elapsed(), totsize/1e6, totsize/1e6/wtimer.Elapsed());
+        array_mutex.unlock();
     }
 
     void LoadBlock(int yblock, int zblock, Complx *slab) {
-        rtimer.Start();
+        STimer thisrtimer;  // read timer
+        thisrtimer.Start();
 
         // We must be sure to access the block sequentially.
         // data[zblock=0..NB-1][yblock=0..NB-1]
@@ -175,9 +212,13 @@ public:
         int yres,y,zres,yshift;
         
         // TODO: could probably just read in two halves
-        bopen(yblock,zblock,"r");
-        bread(StoreBlock_tmp, ppd*narray*block*block);
-        bclose();
+        int64_t totsize = narray*block*block*ppd;
+        Complx *StoreBlock_tmp;  // One extra block for fast transposes
+        int ret = posix_memalign((void **)&StoreBlock_tmp, 4096, totsize*sizeof(Complx));
+        assert(ret==0);
+        FILE *fp = bopen(yblock,zblock,"r");
+        bread(fp,StoreBlock_tmp, totsize);
+        bclose(fp);
 
         int64_t i = 0;
         for (a=0;a<narray;a++)
@@ -195,42 +236,22 @@ public:
                         BLK_AZYX(slab,a,zres,yshift,x) = StoreBlock_tmp[i++];
                 }
         assert(i == ppd*narray*block*block);
+        free(StoreBlock_tmp);
 
-        rtimer.Stop();
-        int64_t totsize = narray*block*block*ppd*sizeof(Complx);
-        bytes_read += totsize;
+        thisrtimer.Stop();
+        array_mutex.lock();
+        rtimer.increment(thisrtimer.timer);
+        bytes_read += totsize*sizeof(Complx);
         //printf("LoadBlock took %.3g sec to read %.3g MB ==> %.3g MB/sec\n",
         //        rtimer.Elapsed(), totsize/1e6, totsize/1e6/rtimer.Elapsed());
+        array_mutex.unlock();
 
         return;
     }
 
-private:
 
-    void bopen(int yblock, int zblock, const char *mode) {
-        // Set up for reading or writing this block
-        assert(yblock>=0&&yblock<numblock);
-        assert(zblock>=0&&zblock<numblock);
-        sprintf(filename,"%s/zeldovich.%1d.%1d",TMPDIR,yblock,zblock);
 
-        fp = fopen(filename,mode);
-        if(fp == NULL) fprintf(stderr,"bad filename: %s\n",filename);
-        assert(fp!=NULL);
-        
-        return;
-    }
-    void bclose() { fclose(fp); return; }
-    void bwrite(Complx *buffer, size_t num) {
-        // Write num Complx numbers to the buffer, increment the pointer
-        fwrite(buffer,sizeof(Complx),num,fp);
-    }
-    void bread(Complx *buffer, size_t num) {
-        // Read num Complx numbers into the buffer, increment the pointer
-        size_t nread = fread(buffer,sizeof(Complx),num,fp);
-        assert(nread == num);
-    }
-#endif
-#else
+#else   // not DISK
     // These routines are for reading in and out of a big array in memory
 
 private: 

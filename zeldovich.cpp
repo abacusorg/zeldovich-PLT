@@ -427,6 +427,7 @@ void ZeldovichZ(BlockArray& array, Parameters& param, PowerSpectrum& Pk) {
 
         // Now store it into the primary BlockArray.  
         // Can't openMP an I/O loop.
+        #pragma omp parallel for schedule(static)
         for (zblock=0;zblock<array.numblock;zblock++) {
             array.StoreBlock(yblock,zblock,slab);
             array.StoreBlock(array.numblock-1-yblock,zblock,slabHer);
@@ -461,6 +462,7 @@ void ZeldovichXY(BlockArray& array, Parameters& param, FILE *output, FILE *denso
         // Load the slab back in.  
         // Can't openMP an I/O loop.
         fprintf(stderr,".");
+        #pragma omp parallel for schedule(static)
         for (yblock=0;yblock<array.numblock;yblock++) {
             array.LoadBlock(yblock, zblock, slab);
         } 
@@ -603,6 +605,7 @@ int main(int argc, char *argv[]) {
     Setup_FFTW(param.ppd);
 
     ZeldovichZ(array, param, Pk);
+    fprintf(stderr,"Wrote %d files\n", array.files_written);
 
     output = 0; // Current implementation doesn't use user-provided output
     ZeldovichXY(array, param, output, densoutput);
