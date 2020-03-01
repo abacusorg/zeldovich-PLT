@@ -78,10 +78,12 @@ public:
             }
         }
 
+        double serial_time = wtimer.Elapsed()/omp_get_max_threads();
         printf("Block IO took %.2f sec to write %.2f GB ==> %.1f MB/sec\n",
-            wtimer.Elapsed(), bytes_written/1e9, bytes_written/1e6/wtimer.Elapsed());
+            serial_time, bytes_written/1e9, bytes_written/1e6/serial_time);
+        serial_time = rtimer.Elapsed()/omp_get_max_threads();
         printf("Block IO took %.2f sec to read %.2f GB ==> %.1f MB/sec\n",
-            rtimer.Elapsed(), bytes_read/1e9, bytes_read/1e6/rtimer.Elapsed());
+            serial_time, bytes_read/1e9, bytes_read/1e6/serial_time);
 
 #else
         delete []arr;
@@ -92,8 +94,8 @@ private:
     // char filename[1024];
     // Next we provide two kinds of DISK I/O, one with fwrite and one with DIRECTIO
 #ifdef DISK
-  #ifdef DIRECTIO
-        // These routines are for DIRECTIO
+  #ifdef DIRECTIO_BROKEN   // BROKEN CODE, I think.
+    // These routines are for DIRECTIO
     off_t fileoffset;
     int diskbuffer;
 
@@ -127,8 +129,6 @@ private:
   #else
     // These routines are for reading blocks on and off disk without DIRECTIO
 private: 
-
-private:
 
     FILE *bopen(int yblock, int zblock, const char *mode) {
         // Set up for reading or writing this block
@@ -177,8 +177,10 @@ public:
                 z = zres+block*zblock;
                 for (yres=0;yres<block;yres++) {
                     // Copy the whole X skewer
+                    Complx *ptr = &(BLK_AYZX(slab,a,yres,z,0));
                     for(int x = 0; x < ppd; x++)
-                        StoreBlock_tmp[i++] = BLK_AYZX(slab,a,yres,z,x);
+                        StoreBlock_tmp[i++] = ptr[x];
+                        // StoreBlock_tmp[i++] = BLK_AYZX(slab,a,yres,z,x);
                 }
             }
 
@@ -190,7 +192,6 @@ public:
         free(StoreBlock_tmp);
 
         thiswtimer.Stop();
-
         array_mutex.lock();
         wtimer.increment(thiswtimer.timer);
         bytes_written += totsize*sizeof(Complx);
@@ -232,8 +233,10 @@ public:
                     if (y>=ppd/2) yshift=y+1; else yshift=y;
                     if (yshift==ppd) yshift=ppd/2;
                     // Put it somewhere; this is about to be overwritten
+                    Complx *ptr = &(BLK_AZYX(slab,a,zres,yshift,0));
                     for(int x = 0; x < ppd; x++)
-                        BLK_AZYX(slab,a,zres,yshift,x) = StoreBlock_tmp[i++];
+                        ptr[x] = StoreBlock_tmp[i++];
+                        // BLK_AZYX(slab,a,zres,yshift,x) = StoreBlock_tmp[i++];
                 }
         assert(i == ppd*narray*block*block);
         free(StoreBlock_tmp);
@@ -245,7 +248,6 @@ public:
         //printf("LoadBlock took %.3g sec to read %.3g MB ==> %.3g MB/sec\n",
         //        rtimer.Elapsed(), totsize/1e6, totsize/1e6/rtimer.Elapsed());
         array_mutex.unlock();
-
         return;
     }
 
@@ -266,16 +268,16 @@ public:
         // Can't openMP an I/O loop.
         unsigned int a;
         int yres,zres,z;
-        bopen(yblock,zblock,"w");
+        Complx *IOptr = bopen(yblock,zblock,"w");
         for (a=0;a<narray;a++) 
         for (zres=0;zres<block;zres++) 
         for (yres=0;yres<block;yres++) {
             z = zres+block*zblock;
             //y = yres+block*yblock;  // the slab is in the y coordinate, so we never need the absolute y index
             // Copy the whole X skewer
-            bwrite(&(BLK_AYZX(slab,a,yres,z,0)),ppd);
+            bwrite(IOptr, &(BLK_AYZX(slab,a,yres,z,0)),ppd);
         }
-        bclose();
+        bclose(IOptr);
 
         wtimer.Stop();
         bytes_written += narray*block*block*ppd*sizeof(Complx);
@@ -290,7 +292,7 @@ public:
         // Can't openMP an I/O loop.
         unsigned int a;
         int yres,y,zres,yshift;
-        bopen(yblock,zblock,"r");
+        Complx *IOptr = bopen(yblock,zblock,"r");
         for (a=0;a<narray;a++)
         for (zres=0;zres<block;zres++) 
         for (yres=0;yres<block;yres++) {
@@ -303,9 +305,9 @@ public:
             if (y>=ppd/2) yshift=y+1; else yshift=y;
             if (yshift==ppd) yshift=ppd/2;
             // Put it somewhere; this is about to be overwritten
-            bread(&(BLK_AZYX(slab,a,zres,yshift,0)),ppd);
+            bread(IOptr, &(BLK_AZYX(slab,a,zres,yshift,0)),ppd);
         }
-        bclose();
+        bclose(IOptr);
 
         rtimer.Stop();
         int64_t totsize = narray*block*block*ppd*sizeof(Complx);
@@ -315,19 +317,19 @@ public:
 
 private: 
 
-    void bopen(int yblock, int zblock, const char *mode) {
+    Complx *bopen(int yblock, int zblock, const char *mode) {
         // Set up for reading or writing this block
         assert(yblock>=0&&yblock<numblock);
         assert(zblock>=0&&zblock<numblock);
         IOptr = arr+((int64_t)zblock*numblock+yblock)*(block*block*ppd*narray);
         return;
     }
-    void bclose() { IOptr = NULL; return; }
-    void bwrite(Complx *buffer, size_t num) {
+    void bclose(Complx * &IOptr) { IOptr = NULL; return; }
+    void bwrite(Complx * &IOptr, Complx *buffer, size_t num) {
         // Write num Complx numbers to the buffer, increment the pointer
         memcpy(IOptr,buffer,sizeof(Complx)*num); IOptr+=num;
     }
-    void bread(Complx *buffer, size_t num) {
+    void bread(Complx * &IOptr, Complx *buffer, size_t num) {
         // Read num Complx numbers into the buffer, increment the pointer
         memcpy(buffer,IOptr,sizeof(Complx)*num); IOptr+=num;
     }

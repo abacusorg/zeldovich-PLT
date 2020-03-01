@@ -9,6 +9,7 @@
 #include <string.h>
 #include <limits.h>     /* PATH_MAX */
 #include <errno.h>
+#include <mutex>
 
 #define YX(_slab,_y,_x) _slab[(_x)+array.ppd*(_y)]
 
@@ -19,6 +20,7 @@ double density_variance;
 void *output_tmp;  // output buffer
 STimer outtimer;
 size_t output_bytes_written = 0;
+std::mutex output_mutex;
 
 class ZelParticle {
 public:
@@ -45,7 +47,9 @@ size_t sizeof_outputtype;
 void WriteParticlesSlab(FILE *output, FILE *densoutput, 
 int z, Complx *slab1, Complx *slab2, Complx *slab3, Complx *slab4,
 BlockArray& array, Parameters& param) {
-    outtimer.Start();
+    STimer thisouttimer;
+    thisouttimer.Start();
+    double thisdensity_variance=0.0;
 
     // Write out one slab of particles
     int x,y;
@@ -143,7 +147,7 @@ BlockArray& array, Parameters& param) {
             //           if (densoutput!=NULL) fwrite(pos+3,sizeof(float),1,densoutput);
             //           delete id;
         }
-        density_variance += pos[3]*pos[3];
+        thisdensity_variance += pos[3]*pos[3];
         
         // Track the global max displacement
         for(int i = 0; i < 3; i++){
@@ -163,9 +167,13 @@ BlockArray& array, Parameters& param) {
     fclose(output);
 
 
-    outtimer.Stop();
+    thisouttimer.Stop();
+    output_mutex.lock();
     int64_t totsize = array.ppd*array.ppd*sizeof_outputtype;
     output_bytes_written += totsize;
+    outtimer.increment(thisouttimer.timer);
+    density_variance += thisdensity_variance;
+    output_mutex.unlock();
     
     return;
 }

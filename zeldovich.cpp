@@ -83,20 +83,29 @@ double max_disp[3];
 #include "fftw3.h"
 fftw_plan plan1d, plan2d;
 void Setup_FFTW(int n) {
+    STimer FFTplanning;
 
     // For big n, this is slow enough to notice
     if(n >= 512)
         fprintf(stderr,"Creating FFTW plans...");
 
+    FFTplanning.Start();
     fftw_complex *p;
     p = new fftw_complex[n*n];
     plan1d = fftw_plan_dft_1d(n, p, p, +1, FFTW_PATIENT);
     plan2d = fftw_plan_dft_2d(n, n, p, p, +1, FFTW_PATIENT);
     delete []p;
+    FFTplanning.Stop();
 
     if(n >= 512)
-        fprintf(stderr," done.\n");
+        fprintf(stderr," done in %f sec.\n", FFTplanning.Elapsed());
 }
+
+// TODO: This handling of the memory allocation required for plans 
+// doesn't seem exceptionally safe.  Is it really true that "new Complx"
+// always returns a suitably aligned variable? 
+// And we're trusting that every 2-d plane ends up aligned, although
+// this has a better chance of being ok because we require an even PPD.
 
 void Inverse1dFFT(Complx *p, int n) {
     // Given a pointer to a 1d complex vector, packed as p[n].
@@ -244,6 +253,8 @@ eigenmode get_eigenmode(int kx, int ky, int kz, int64_t ppd, int qPLT){
 void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk, 
                 int yblock, int yres, Complx *slab, Complx *slabHer) {
     // Note that this function is called from within a parallel for-loop over yres
+    // STimer cpu, fft;
+    // cpu.Start();
 
     Complx D,F,G,H,f;
     Complx I(0.0,1.0);
@@ -397,10 +408,14 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
     }
 
     // Now do the Z FFTs, since those data are contiguous
+    // cpu.Stop();
+    // fft.Start();
     for (a=0;a<array.narray;a++) {
         InverseFFT_Yonly(&(AYZX(slab,a,yres,0,0)),ppd);
         InverseFFT_Yonly(&(AYZX(slabHer,a,yresHer,0,0)),ppd);
     }
+    // fft.Stop();
+    // printf("FFT fraction %f\n", fft.Elapsed()/(cpu.Elapsed()+fft.Elapsed()));
     return;
 }
 
@@ -414,28 +429,34 @@ void ZeldovichZ(BlockArray& array, Parameters& param, PowerSpectrum& Pk) {
     int64_t len = (int64_t)array.block*array.ppd*array.ppd*array.narray;
     slab    = new Complx[len];
     slabHer = new Complx[len];
+    STimer compute_planes, storing;
     //
     fprintf(stderr,"Looping over Y: ");
     for (yblock=0;yblock<array.numblock/2;yblock++) {
         // We're going to do each pair of Y slabs separately.
         // Load the deltas and do the FFTs for each pair of planes
         fprintf(stderr,".."); fflush(stderr);
+        compute_planes.Start();
         #pragma omp parallel for schedule(static)
         for (int yres=0;yres<array.block;yres++) {     
             LoadPlane(array,param,Pk,yblock,yres,slab,slabHer);
         }
+        compute_planes.Stop();
 
         // Now store it into the primary BlockArray.  
         // Can't openMP an I/O loop.
+        storing.Start();
         #pragma omp parallel for schedule(static)
         for (zblock=0;zblock<array.numblock;zblock++) {
             array.StoreBlock(yblock,zblock,slab);
             array.StoreBlock(array.numblock-1-yblock,zblock,slabHer);
         }
+        storing.Stop();
     }  // End yblock for loop
     delete []slabHer;
     delete []slab;
     fprintf(stderr,"\n");
+    fprintf(stderr,"Computing, Saving the Planes took %f %f sec\n", compute_planes.Elapsed(), storing.Elapsed());
     return;
 }
 
@@ -454,23 +475,28 @@ void ZeldovichXY(BlockArray& array, Parameters& param, FILE *output, FILE *denso
     int64_t len = (int64_t)array.block*array.ppd*array.ppd*array.narray;
     slab = new Complx[len];
     unsigned int a;
-    int x,yblock,y,zblock,z;
+    int x,yblock,y,zblock;
     fprintf(stderr,"Looping over Z: ");
+    STimer loading, writing, fft;
 
     for (zblock=0;zblock<array.numblock;zblock++) {
         // We'll do one Z slab at a time
         // Load the slab back in.  
         // Can't openMP an I/O loop.
+        loading.Start();
         fprintf(stderr,".");
         #pragma omp parallel for schedule(static)
         for (yblock=0;yblock<array.numblock;yblock++) {
             array.LoadBlock(yblock, zblock, slab);
         } 
+        loading.Stop();
 
         // The Nyquist frequency y=array.ppd/2 must now be set to 0
         // because we shifted the data by one location.
         // FLAW: this assumes PPD is even.
+        fft.Start();
         y = array.ppd/2;
+        #pragma omp parallel for schedule(static)
         for (int zres=0;zres<array.block;zres++) {
             for (a=0;a<array.narray;a++) {
                 for (x=0;x<array.ppd;x++) AZYX(slab,a,zres,y,x) = 0.0;
@@ -484,27 +510,28 @@ void ZeldovichXY(BlockArray& array, Parameters& param, FILE *output, FILE *denso
                 Inverse2dFFT(&(AZYX(slab,a,zres,0,0)),array.ppd);
             }
         }
+        fft.Stop();
 
         // Now write out these rows of [z][y][x] positions
-        // Can't openMP an I/O loop.
-        
+        // TODO: For now, we can't openMP an I/O loop.
+        // There are internal buffers in the output routines that need to be made thread-safe.
 
+        writing.Start();
         for (int zres=0;zres<array.block;zres++) {
-            z = zres+array.block*zblock;
+            int z = zres+array.block*zblock;
             if (param.qoneslab<0||z==param.qoneslab) {
                 // We have the option to output only one z slab.
-
-
-
                 WriteParticlesSlab(output,densoutput,z,
                 &(AZYX(slab,0,zres,0,0)), &(AZYX(slab,1,zres,0,0)),
                 &(AZYX(slab,2,zres,0,0)), &(AZYX(slab,3,zres,0,0)),
                 array, param);
             }
         }
+        writing.Stop();
     } // End zblock for loop
     delete []slab;
     fprintf(stderr,"\n");
+    fprintf(stderr,"Loading, FFTs, Writing took %f %f %f seconds\n", loading.Elapsed(), fft.Elapsed(), writing.Elapsed());
     return;
 }
 
@@ -541,6 +568,8 @@ void load_eigmodes(Parameters &param){
     
     eigf.close();
 }
+
+// ===============================================================
 
 int main(int argc, char *argv[]) {
     if (argc != 2){
@@ -602,13 +631,26 @@ int main(int argc, char *argv[]) {
 
     BlockArray array(param.ppd,param.numblock,narray,param.output_dir,param.ramdisk);
 
+    totaltime.Stop();
+    fprintf(stderr,"Preamble took %f seconds\n", totaltime.Elapsed());
+    totaltime.Start();
     Setup_FFTW(param.ppd);
+
+    totaltime.Stop();
+    fprintf(stderr,"Time so far: %f seconds\n", totaltime.Elapsed());
+    totaltime.Start();
 
     ZeldovichZ(array, param, Pk);
     fprintf(stderr,"Wrote %d files\n", array.files_written);
+    totaltime.Stop();
+    fprintf(stderr,"Time so far: %f seconds\n", totaltime.Elapsed());
+    totaltime.Start();
 
     output = 0; // Current implementation doesn't use user-provided output
     ZeldovichXY(array, param, output, densoutput);
+    totaltime.Stop();
+    fprintf(stderr,"Time so far: %f seconds\n", totaltime.Elapsed());
+    totaltime.Start();
 
     fprintf(stderr,"The rms density variation of the pixels is %f\n", sqrt(density_variance/CUBE(param.ppd)));
     fprintf(stderr,"This could be compared to the P(k) prediction of %f\n",
@@ -617,6 +659,9 @@ int main(int argc, char *argv[]) {
     fprintf(stderr,"The maximum component-wise displacements are (%g, %g, %g), same units as BoxSize.\n", max_disp[0], max_disp[1], max_disp[2]);
     fprintf(stderr,"For Abacus' 2LPT implementation to work (assuming FINISH_WAIT_RADIUS = 1),\n\tthis implies a maximum CPD of %d\n", (int) (param.boxsize/(2*max_disp[2])));  // The slab direction is z in this code
     // fclose(output);
+    totaltime.Stop();
+    fprintf(stderr,"Time so far: %f seconds\n", totaltime.Elapsed());
+    totaltime.Start();
     
     if(param.qPLT)
         delete[] eig_vecs;
@@ -624,7 +669,7 @@ int main(int argc, char *argv[]) {
     TeardownOutput();
 
     totaltime.Stop();
-    printf("zeldovich took %.3g sec for ppd %lu ==> %.2g Mpart/sec\n",
+    printf("zeldovich took %.4g sec for ppd %lu ==> %.3g Mpart/sec\n",
         totaltime.Elapsed(), param.ppd, param.np/1e6/totaltime.Elapsed());
     
     return 0;
