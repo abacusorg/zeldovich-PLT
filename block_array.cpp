@@ -260,7 +260,8 @@ private:
     Complx *IOptr;
 public:
     void StoreBlock(int yblock, int zblock, Complx *slab) {
-        wtimer.Start();
+        STimer thiswtimer;
+        thiswtimer.Start();
 
         // We must be sure to store the block sequentially.
         // data[zblock=0..NB-1][yblock=0..NB-1]
@@ -279,12 +280,16 @@ public:
         }
         bclose(IOptr);
 
-        wtimer.Stop();
+        thiswtimer.Stop();
+        array_mutex.lock();
+        wtimer.increment(thiswtimer.timer);
         bytes_written += narray*block*block*ppd*sizeof(Complx);
+        array_mutex.unlock();
     }
 
     void LoadBlock(int yblock, int zblock, Complx *slab) {
-        rtimer.Start();
+        STimer thisrtimer;
+        thisrtimer.Start();
 
         // We must be sure to access the block sequentially.
         // data[zblock=0..NB-1][yblock=0..NB-1]
@@ -309,9 +314,12 @@ public:
         }
         bclose(IOptr);
 
-        rtimer.Stop();
+        thisrtimer.Stop();
         int64_t totsize = narray*block*block*ppd*sizeof(Complx);
+        array_mutex.lock();
+        rtimer.increment(thisrtimer.timer);
         bytes_read += totsize;
+        array_mutex.unlock();
         return;
     }
 
@@ -322,7 +330,7 @@ private:
         assert(yblock>=0&&yblock<numblock);
         assert(zblock>=0&&zblock<numblock);
         IOptr = arr+((int64_t)zblock*numblock+yblock)*(block*block*ppd*narray);
-        return;
+        return IOptr;
     }
     void bclose(Complx * &IOptr) { IOptr = NULL; return; }
     void bwrite(Complx * &IOptr, Complx *buffer, size_t num) {
