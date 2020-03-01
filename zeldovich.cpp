@@ -88,11 +88,11 @@ void Setup_FFTW(int n) {
     if(n >= 512)
         fprintf(stderr,"Creating FFTW plans...");
 
-    fftw_complex *p;
-    p = new fftw_complex[n*n];
+    fftw_complex *p = (fftw_complex *) fftw_malloc(sizeof(fftw_complex)*n*n);
+    assert(p != NULL);
     plan1d = fftw_plan_dft_1d(n, p, p, +1, FFTW_PATIENT);
     plan2d = fftw_plan_dft_2d(n, n, p, p, +1, FFTW_PATIENT);
-    delete []p;
+    fftw_free(p);
 
     if(n >= 512)
         fprintf(stderr," done.\n");
@@ -116,14 +116,15 @@ void InverseFFT_Yonly(Complx *p, int n) {
     // our 3-d problem!
     Complx *tmp;
     int j,k;
-    tmp = new Complx[n];
+    tmp = (Complx *) fftw_malloc(sizeof(Complx)*n);
+    assert(tmp != NULL);
     for (j=0;j<n;j++) {
         // We will load one row at a time
         for (k=0;k<n;k++) tmp[k] = p[k*n+j];
         Inverse1dFFT(tmp, n);
         for (k=0;k<n;k++) p[k*n+j] = tmp[k];
     }
-    delete []tmp;
+    fftw_free(tmp);
 }
 
 //================================================================
@@ -412,8 +413,9 @@ void ZeldovichZ(BlockArray& array, Parameters& param, PowerSpectrum& Pk) {
     Complx *slab, *slabHer;
     int yblock,zblock;
     int64_t len = (int64_t)array.block*array.ppd*array.ppd*array.narray;
-    slab    = new Complx[len];
-    slabHer = new Complx[len];
+    slab    = (Complx *) fftw_malloc(sizeof(Complx)*len);
+    slabHer = (Complx *) fftw_malloc(sizeof(Complx)*len);
+    assert(slab != NULL && slabHer != NULL);
     //
     fprintf(stderr,"Looping over Y: ");
     for (yblock=0;yblock<array.numblock/2;yblock++) {
@@ -432,8 +434,8 @@ void ZeldovichZ(BlockArray& array, Parameters& param, PowerSpectrum& Pk) {
             array.StoreBlock(array.numblock-1-yblock,zblock,slabHer);
         }
     }  // End yblock for loop
-    delete []slabHer;
-    delete []slab;
+    fftw_free(slabHer);
+    fftw_free(slab);
     fprintf(stderr,"\n");
     return;
 }
@@ -451,7 +453,8 @@ void ZeldovichXY(BlockArray& array, Parameters& param, FILE *output, FILE *denso
     
     Complx *slab;
     int64_t len = (int64_t)array.block*array.ppd*array.ppd*array.narray;
-    slab = new Complx[len];
+    slab = (Complx *) fftw_malloc(sizeof(Complx)*len);
+    assert(slab != NULL);
     unsigned int a;
     int x,yblock,y,zblock,z;
     fprintf(stderr,"Looping over Z: ");
@@ -501,7 +504,7 @@ void ZeldovichXY(BlockArray& array, Parameters& param, FILE *output, FILE *denso
             }
         }
     } // End zblock for loop
-    delete []slab;
+    fftw_free(slab);
     fprintf(stderr,"\n");
     return;
 }
