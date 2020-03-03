@@ -624,7 +624,7 @@ int main(int argc, char *argv[]) {
     TeardownOutput();
 
     totaltime.Stop();
-    printf("zeldovich took %.3g sec for ppd %lu ==> %.2g Mpart/sec\n",
+    fprintf(stderr,"zeldovich took %.3g sec for ppd %lu ==> %.2g Mpart/sec\n",
         totaltime.Elapsed(), param.ppd, param.np/1e6/totaltime.Elapsed());
     
     return 0;

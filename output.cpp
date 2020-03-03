@@ -214,7 +214,7 @@ void TeardownOutput(){
             break;
     }
 
-    printf("WriteParticlesSlab took %.3g sec to write %.3g MB ==> %.3g MB/sec\n",
+    fprintf(stderr, "WriteParticlesSlab took %.3g sec to write %.3g MB ==> %.3g MB/sec\n",
             outtimer.Elapsed(), output_bytes_written/1e6, output_bytes_written/1e6/outtimer.Elapsed());
 }
 
