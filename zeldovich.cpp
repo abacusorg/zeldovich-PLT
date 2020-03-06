@@ -446,7 +446,7 @@ void ZeldovichZ(BlockArray& array, Parameters& param, PowerSpectrum& Pk) {
         // Now store it into the primary BlockArray.  
         // Can't openMP an I/O loop.
         storing.Start();
-        #pragma omp parallel for schedule(static)
+        #pragma omp parallel for schedule(dynamic,1)
         for (zblock=0;zblock<array.numblock;zblock++) {
             array.StoreBlock(yblock,zblock,slab);
             array.StoreBlock(array.numblock-1-yblock,zblock,slabHer);
@@ -485,7 +485,7 @@ void ZeldovichXY(BlockArray& array, Parameters& param, FILE *output, FILE *denso
         // Can't openMP an I/O loop.
         loading.Start();
         fprintf(stderr,".");
-        #pragma omp parallel for schedule(static)
+        #pragma omp parallel for schedule(dynamic,1)
         for (yblock=0;yblock<array.numblock;yblock++) {
             array.LoadBlock(yblock, zblock, slab);
         } 
