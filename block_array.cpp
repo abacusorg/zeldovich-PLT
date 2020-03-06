@@ -27,12 +27,14 @@ public:
 
     int numblock, block;
     int64_t ppd;  // Making ppd a 64-bit integer avoids trouble with ppd^3 int32_t overflow
+    int64_t ppdhalf; // ppd/2
     int64_t narray;  // Make int64 to avoid overflow in later calculations
     char TMPDIR[1024];
     int ramdisk;
 
     BlockArray(int _ppd, int _numblock, int _narray, char *_dir, int _ramdisk) {
         ppd = (int64_t) _ppd;
+        ppdhalf = ppd/2;
         numblock = _numblock;
         block = ppd/numblock;
         narray = _narray;
@@ -230,8 +232,8 @@ public:
                     // shift the y frequencies in the reflected half
                     // by one.
                     // FLAW: Assumes ppd is even.
-                    if (y>=ppd/2) yshift=y+1; else yshift=y;
-                    if (yshift==ppd) yshift=ppd/2;
+                    if (y>=ppdhalf) yshift=y+1; else yshift=y;
+                    if (yshift==ppd) yshift=ppdhalf;
                     // Put it somewhere; this is about to be overwritten
                     Complx *ptr = &(BLK_AZYX(slab,a,zres,yshift,0));
                     for(int x = 0; x < ppd; x++)
@@ -307,8 +309,8 @@ public:
             // shift the y frequencies in the reflected half
             // by one.
             // FLAW: Assumes ppd is even.
-            if (y>=ppd/2) yshift=y+1; else yshift=y;
-            if (yshift==ppd) yshift=ppd/2;
+            if (y>=ppdhalf) yshift=y+1; else yshift=y;
+            if (yshift==ppd) yshift=ppdhalf;
             // Put it somewhere; this is about to be overwritten
             bread(IOptr, &(BLK_AZYX(slab,a,zres,yshift,0)),ppd);
         }
