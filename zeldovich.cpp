@@ -85,20 +85,24 @@ fftw_plan plan1d, plan2d;
 void Setup_FFTW(int n) {
     STimer FFTplanning;
 
-    // For big n, this is slow enough to notice
-    if(n >= 512)
-        fprintf(stderr,"Creating FFTW plans...");
-
     FFTplanning.Start();
+    char wisdom_file[1024];
+    int wisdom_exists;
+    sprintf(wisdom_file, "fftw_zeldovich.wisdom"); 
+        // TODO: Where to put this file?  param.output_dir?  Or in the repository?
+        // Currently in the repository
+    wisdom_exists = fftw_import_wisdom_from_filename(wisdom_file);
+    fprintf(stderr,"FFTW Wisdom import from file \"%s\" returned %d (%s).\n", wisdom_file, wisdom_exists, wisdom_exists == 1 ? "success" : "failure");
+
     fftw_complex *p;
     p = new fftw_complex[n*n];
     plan1d = fftw_plan_dft_1d(n, p, p, +1, FFTW_PATIENT);
     plan2d = fftw_plan_dft_2d(n, n, p, p, +1, FFTW_PATIENT);
     delete []p;
+    int ret = fftw_export_wisdom_to_filename(wisdom_file);
+    fprintf(stderr,"FFTW Wisdom export to file \"%s\" returned %d.\n", wisdom_file, ret);
     FFTplanning.Stop();
-
-    if(n >= 512)
-        fprintf(stderr," done in %f sec.\n", FFTplanning.Elapsed());
+    fprintf(stderr,"Creating FFTW plans done in %f sec.\n", FFTplanning.Elapsed());
 }
 
 // TODO: This handling of the memory allocation required for plans 
