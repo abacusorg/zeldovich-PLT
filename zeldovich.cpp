@@ -270,13 +270,24 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
     // STimer cpu, fft;
     // cpu.Start();
 
-    Complx D,F,G,H,f;
+    Complx D,F,G,H;
+    double f;
     Complx I(0.0,1.0);
     double k2;
     unsigned int a;
     int x,y,z, kx,ky,kz, xHer,yresHer,zHer;
     int64_t ppd = array.ppd;
     int64_t ppdhalf = array.ppdhalf;
+    double ifundamental = 1.0/param.fundamental; // store the inverse
+    double fundamental2 = param.fundamental*param.fundamental; // store the square
+    double ik_cutoff = 1.0/param.k_cutoff;   // store the inverse
+
+    double target_f = (sqrt(1. + 24*param.f_cluster) - 1)/4.;
+    double a_NL, a0;
+    if(param.qPLTrescale){
+        a_NL = 1./(1+param.PLT_target_z);
+        a0 = 1./(1+param.z_initial);
+    } else { a_NL = a0 = 1.0; }
 
     // How many RNG calls do we skip?  We'll fast-forward this amount each time we resume
     int64_t nskip = 0;
@@ -306,10 +317,10 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
             kx = x>ppdhalf?x-ppd:x;        // Nyquist wrapping
             xHer = ppd-x; if (x==0) xHer=0;    // Reflection
             // We will pack two complex arrays
-            k2 = (kx*kx+ky*ky+kz*kz)*param.fundamental*param.fundamental;
+            k2 = (kx*kx+ky*ky+kz*kz)*fundamental2;
             
             // Force Nyquist elements to zero, being extra careful with rounding
-            int kmax = (double)ppdhalf/param.k_cutoff+.5;
+            int kmax = (double)ppdhalf*ik_cutoff+.5;
             if ( (abs(kx)==kmax || abs(kz)==kmax || abs(ky)==kmax)
                     // Force all elements with wavenumber above k_cutoff (nominally k_Nyquist) to zero
                     || (k2>=k2_cutoff)
@@ -325,7 +336,6 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
                     v2rng[y].advance(2*nskip);
                     nskip = 0;
                 }
-
                 D = Pk.cgauss<2>(sqrt(k2), y);
             } else {
                 // We deliberately only call cgauss() if we are inside the k_cutoff region
@@ -334,27 +344,14 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
             }
             // D = 0.1;    // If we need a known level
             
-            k2 /= param.fundamental; // Get units of F,G,H right
+            k2 *= ifundamental; // Get units of F,G,H right
             if (k2==0.0) k2 = 1.0;  // Avoid divide by zero
             // if (!(ky==5)) D=0.0;    // Pick out one plane
+            double ik2 = 1.0/k2;
             
             // No-op this math if we aren't going to use it
             if(D != 0.){
                 eigenmode e = get_eigenmode(kx, ky, kz, ppd, param.qPLT);
-                double rescale = 1.;
-                if(param.qPLTrescale){
-                    double a_NL = 1./(1+param.PLT_target_z);
-                    double a0 = 1./(1+param.z_initial);
-                    // First is continuum linear theory growth rate, possibly including f_smooth
-                    // Second is PLT growth rate, also including f_smooth
-                    double target_f = (sqrt(1. + 24*param.f_cluster) - 1)/4.;
-                    double plt_f = (sqrt(1. + 24*e.val*param.f_cluster) - 1)/4.;
-                    rescale = pow(a_NL/a0, target_f - plt_f);
-                }
-                F = rescale*I*e.vec[0]/k2*D;
-                G = rescale*I*e.vec[1]/k2*D;
-                H = rescale*I*e.vec[2]/k2*D;
-                
                 if(param.qPLT){
                     // This is f_growth, the logarithmic derivative of the growth factor that scales the velocities
                     // The corrections are sourced from:
@@ -362,9 +359,25 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
                     // 2) Addition of a smooth, non-clustering component to the background (<= NOT A PLT EFFECT)
                     // If PLT is turned on, we have to combine the effects here.  If not, we apply f_cluster during output.
                     f = (sqrt(1. + 24*e.val*param.f_cluster) - 1)*.25; // 1/4 instead of 1/6 because v = alpha*u/t0 = 3/2*H*alpha*u
+                } else f = 1.0;
+        
+                double rescale = 1.;
+                if(param.qPLTrescale){
+                    /// double a_NL = 1./(1+param.PLT_target_z);
+                    /// double a0 = 1./(1+param.z_initial);
+                    // First is continuum linear theory growth rate, possibly including f_smooth
+                    // Second is PLT growth rate, also including f_smooth
+                    /// double target_f = (sqrt(1. + 24*param.f_cluster) - 1)/4.;
+                    // double plt_f = (sqrt(1. + 24*e.val*param.f_cluster) - 1)/4.;
+                    double plt_f = f;
+                    rescale = pow(a_NL/a0, target_f - plt_f);
                 }
+                F = rescale*I*e.vec[0]*ik2*D;
+                G = rescale*I*e.vec[1]*ik2*D;
+                H = rescale*I*e.vec[2]*ik2*D;
             } else {
-                F = G = H = f = 0.;
+                F = G = H = 0.0;
+                f = 0.;
             }
             
             // fprintf(stderr,"%d %d %d   %d %d %d   %f   %f %f\n",
