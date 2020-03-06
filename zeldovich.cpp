@@ -437,7 +437,7 @@ void ZeldovichZ(BlockArray& array, Parameters& param, PowerSpectrum& Pk) {
         // Load the deltas and do the FFTs for each pair of planes
         fprintf(stderr,".."); fflush(stderr);
         compute_planes.Start();
-        #pragma omp parallel for schedule(static)
+        #pragma omp parallel for schedule(dynamic,1)
         for (int yres=0;yres<array.block;yres++) {     
             LoadPlane(array,param,Pk,yblock,yres,slab,slabHer);
         }
@@ -505,7 +505,7 @@ void ZeldovichXY(BlockArray& array, Parameters& param, FILE *output, FILE *denso
 
         // Now we want to do the Y & X inverse FFT.
         for (a=0;a<array.narray;a++) {
-            #pragma omp parallel for schedule(static)
+            #pragma omp parallel for schedule(dynamic,1)
             for (int zres=0;zres<array.block;zres++) {
                 Inverse2dFFT(&(AZYX(slab,a,zres,0,0)),array.ppd);
             }
