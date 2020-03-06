@@ -95,11 +95,13 @@ void Setup_FFTW(int n) {
     fprintf(stderr,"FFTW Wisdom import from file \"%s\" returned %d (%s).\n", wisdom_file, wisdom_exists, wisdom_exists == 1 ? "success" : "failure");
 
     fftw_complex *p;
-    p = new fftw_complex[n*n];
+    // p = new fftw_complex[n*n];
+    int ret = posix_memalign((void **)&p, 4096, n*n*sizeof(Complx));
     plan1d = fftw_plan_dft_1d(n, p, p, +1, FFTW_PATIENT);
     plan2d = fftw_plan_dft_2d(n, n, p, p, +1, FFTW_PATIENT);
-    delete []p;
-    int ret = fftw_export_wisdom_to_filename(wisdom_file);
+    free(p);
+    // delete []p;
+    ret = fftw_export_wisdom_to_filename(wisdom_file);
     fprintf(stderr,"FFTW Wisdom export to file \"%s\" returned %d.\n", wisdom_file, ret);
     FFTplanning.Stop();
     fprintf(stderr,"Creating FFTW plans done in %f sec.\n", FFTplanning.Elapsed());
@@ -129,14 +131,18 @@ void InverseFFT_Yonly(Complx *p, int n) {
     // our 3-d problem!
     Complx *tmp;
     int j,k;
-    tmp = new Complx[n];
+    int ret = posix_memalign((void **)&tmp, 4096, n*sizeof(Complx));
+    assert(ret==0);
+
+    // tmp = new Complx[n];
     for (j=0;j<n;j++) {
         // We will load one row at a time
         for (k=0;k<n;k++) tmp[k] = p[k*n+j];
         Inverse1dFFT(tmp, n);
         for (k=0;k<n;k++) p[k*n+j] = tmp[k];
     }
-    delete []tmp;
+    free(tmp);
+    //delete []tmp;
 }
 
 //================================================================
