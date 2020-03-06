@@ -179,9 +179,9 @@ public:
                 z = zres+block*zblock;
                 for (yres=0;yres<block;yres++) {
                     // Copy the whole X skewer
-                    Complx *ptr = &(BLK_AYZX(slab,a,yres,z,0));
-                    for(int x = 0; x < ppd; x++)
-                        StoreBlock_tmp[i++] = ptr[x];
+                    memcpy(StoreBlock_tmp+i, &(BLK_AYZX(slab,a,yres,z,0)), ppd*sizeof(Complx));
+                    i+=ppd;
+                    // for(int x = 0; x < ppd; x++)
                         // StoreBlock_tmp[i++] = BLK_AYZX(slab,a,yres,z,x);
                 }
             }
@@ -235,9 +235,9 @@ public:
                     if (y>=ppdhalf) yshift=y+1; else yshift=y;
                     if (yshift==ppd) yshift=ppdhalf;
                     // Put it somewhere; this is about to be overwritten
-                    Complx *ptr = &(BLK_AZYX(slab,a,zres,yshift,0));
-                    for(int x = 0; x < ppd; x++)
-                        ptr[x] = StoreBlock_tmp[i++];
+                    memcpy(&(BLK_AZYX(slab,a,zres,yshift,0)), StoreBlock_tmp+i, ppd*sizeof(Complx));
+                    i+=ppd;
+                    // for(int x = 0; x < ppd; x++)
                         // BLK_AZYX(slab,a,zres,yshift,x) = StoreBlock_tmp[i++];
                 }
         assert(i == ppd*narray*block*block);
