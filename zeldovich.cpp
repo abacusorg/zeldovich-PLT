@@ -276,6 +276,7 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
     unsigned int a;
     int x,y,z, kx,ky,kz, xHer,yresHer,zHer;
     int64_t ppd = array.ppd;
+    int64_t ppdhalf = array.ppdhalf;
 
     // How many RNG calls do we skip?  We'll fast-forward this amount each time we resume
     int64_t nskip = 0;
@@ -290,25 +291,25 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
         checkpoint = v2rng[y];
     } 
 
-    ky = y>ppd/2?y-ppd:y;        // Nyquist wrapping
+    ky = y>ppdhalf?y-ppd:y;        // Nyquist wrapping
     yresHer = array.block-1-yres;         // Reflection
     for (z=0;z<ppd;z++) {
         // Just crossed the wrap, skip MAX_PPD-ppd rows
-        if(z == ppd/2+1 && ver == 2)
+        if(z == ppdhalf+1 && ver == 2)
             nskip += (MAX_PPD - ppd)*MAX_PPD;
-        kz = z>ppd/2?z-ppd:z;        // Nyquist wrapping
+        kz = z>ppdhalf?z-ppd:z;        // Nyquist wrapping
         zHer = ppd-z; if (z==0) zHer=0;     // Reflection
         for (x=0;x<ppd;x++) {
             // Just cross the wrap, skip MAX_PPD-ppd particles
-            if(x == ppd/2+1 && ver == 2)
+            if(x == ppdhalf+1 && ver == 2)
                 nskip += MAX_PPD - ppd;
-            kx = x>ppd/2?x-ppd:x;        // Nyquist wrapping
+            kx = x>ppdhalf?x-ppd:x;        // Nyquist wrapping
             xHer = ppd-x; if (x==0) xHer=0;    // Reflection
             // We will pack two complex arrays
             k2 = (kx*kx+ky*ky+kz*kz)*param.fundamental*param.fundamental;
             
             // Force Nyquist elements to zero, being extra careful with rounding
-            int kmax = ppd/2./param.k_cutoff+.5;
+            int kmax = (double)ppdhalf/param.k_cutoff+.5;
             if ( (abs(kx)==kmax || abs(kz)==kmax || abs(ky)==kmax)
                     // Force all elements with wavenumber above k_cutoff (nominally k_Nyquist) to zero
                     || (k2>=k2_cutoff)
@@ -405,10 +406,10 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
     // half of it back.
     if (yblock==0&&yres==0) {
         // Copy the first half plane onto the second
-        for (z=0;z<ppd/2;z++) {
+        for (z=0;z<ppdhalf;z++) {
             zHer = ppd-z; if (z==0) zHer=0;
             // Treat y=z=0 as a half line
-            int xmax = (z==0?ppd/2:ppd);
+            int xmax = (z==0?ppdhalf:ppd);
             for (x=0;x<xmax;x++) {
                 xHer = ppd-x;if (x==0) xHer=0;
                 for (a=0;a<array.narray;a++) {
@@ -579,6 +580,7 @@ void load_eigmodes(Parameters &param){
     
     // eig_vecs = new double[nelem];
     int ret = posix_memalign((void **)&eig_vecs, 4096, sizeof(double)*nelem);
+    assert(ret==0);
     eigf.read((char*) eig_vecs, nbytes);
     
     eigf.close();
