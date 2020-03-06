@@ -159,6 +159,7 @@ typedef struct {
 void interp_eigmode(int ikx, int iky, int ikz, int64_t ppd, double *e){
 #define EIGMODE(_kx,_ky,_kz,_i) (eig_vecs[(int64_t)(_kx)*eig_vecs_ppd*halfppd*4 + (_ky)*halfppd*4 + (_kz)*4 + (_i)])
     int64_t halfppd = eig_vecs_ppd/2 + 1;
+    int64_t ppdhalf = eig_vecs_ppd/2;
     if(eig_vecs_ppd % ppd == 0){
         for(int i = 0; i < 4; i++)
             e[i] = EIGMODE(ikx*eig_vecs_ppd/ppd, iky*eig_vecs_ppd/ppd, ikz*eig_vecs_ppd/ppd, i);
@@ -171,11 +172,14 @@ void interp_eigmode(int ikx, int iky, int ikz, int64_t ppd, double *e){
     
     // For ppd 64, [0,32] are positive k, [33,63] are negative
     // So don't interpolate between 32-33!  Map upwards instead.
-    if(fx > eig_vecs_ppd/2 && fx < eig_vecs_ppd/2 + 1)
+    // if(fx > eig_vecs_ppd/2 && fx < eig_vecs_ppd/2 + 1)
+    // if(fy > eig_vecs_ppd/2 && fy < eig_vecs_ppd/2 + 1)
+    // if(fz > eig_vecs_ppd/2 && fz < eig_vecs_ppd/2 + 1)
+    if(fx > ppdhalf && fx < halfppd)
         fx = floor(fx+1);
-    if(fy > eig_vecs_ppd/2 && fy < eig_vecs_ppd/2 + 1)
+    if(fy > ppdhalf && fy < halfppd)
         fy = floor(fy+1);
-    if(fz > eig_vecs_ppd/2 && fz < eig_vecs_ppd/2 + 1)
+    if(fz > ppdhalf && fz < halfppd)
         fz = floor(fz+1);
     
     // Build the indices of the nearest grid points
@@ -207,7 +211,7 @@ void interp_eigmode(int ikx, int iky, int ikz, int64_t ppd, double *e){
     f[5] = (fx) * (1 - fy) * (fz); 
     f[6] = (fx) * (fy) * (1 - fz);
     f[7] = (fx) * (fy) * (fz);
-    
+
     // Treat the eigenmode struct as 4 doubles
     for(int i = 0; i < 4; i++){
         e[i] = f[0]*EIGMODE(ikx_l, iky_l, ikz_l, i) + f[1]*EIGMODE(ikx_l, iky_l, ikz_h, i) +
@@ -573,7 +577,8 @@ void load_eigmodes(Parameters &param){
         exit(1);
     }
     
-    eig_vecs = new double[nelem];
+    // eig_vecs = new double[nelem];
+    int ret = posix_memalign((void **)&eig_vecs, 4096, sizeof(double)*nelem);
     eigf.read((char*) eig_vecs, nbytes);
     
     eigf.close();
@@ -674,7 +679,8 @@ int main(int argc, char *argv[]) {
     totaltime.Start();
     
     if(param.qPLT)
-        delete[] eig_vecs;
+        free(eig_vecs);
+        // delete[] eig_vecs;
 
     TeardownOutput();
 
