@@ -135,6 +135,7 @@ void InverseFFT_Yonly(Complx *p, int n) {
     assert(ret==0);
 
     // tmp = new Complx[n];
+
     for (j=0;j<n;j++) {
         // We will load one row at a time
         for (k=0;k<n;k++) tmp[k] = p[k*n+j];
@@ -481,8 +482,8 @@ void ZeldovichZ(BlockArray& array, Parameters& param, PowerSpectrum& Pk) {
         }
         storing.Stop();
     }  // End yblock for loop
-    delete []slabHer;
-    delete []slab;
+    delete[] slabHer;
+    delete[] slab;
     fprintf(stderr,"\n");
     fprintf(stderr,"Computing, Saving the Planes took %f %f sec\n", compute_planes.Elapsed(), storing.Elapsed());
     return;
@@ -557,7 +558,7 @@ void ZeldovichXY(BlockArray& array, Parameters& param, FILE *output, FILE *denso
         }
         writing.Stop();
     } // End zblock for loop
-    delete []slab;
+    delete[] slab;
     fprintf(stderr,"\n");
     fprintf(stderr,"Loading, FFTs, Writing took %f %f %f seconds\n", loading.Elapsed(), fft.Elapsed(), writing.Elapsed());
     return;
@@ -700,7 +701,7 @@ int main(int argc, char *argv[]) {
     TeardownOutput();
 
     totaltime.Stop();
-    printf("zeldovich took %.4g sec for ppd %lu ==> %.3g Mpart/sec\n",
+    fprintf(stderr, "zeldovich took %.4g sec for ppd %lu ==> %.3g Mpart/sec\n",
         totaltime.Elapsed(), param.ppd, param.np/1e6/totaltime.Elapsed());
     
     return 0;

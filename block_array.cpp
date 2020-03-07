@@ -58,9 +58,9 @@ public:
         // If there are fewer planes than threads; we're underutilizing the CPU!
         // But it probably only matters for large problem sizes.
         int nthread = omp_get_max_threads();
-        printf("Using %d OpenMP threads\n", nthread);
+        fprintf(stderr, "Using %d OpenMP threads\n", nthread);
         if(block < nthread && ppd >= 512){
-            printf(R"(
+            fprintf(stderr, R"(
 *** Note: the number of particles per block (%d) is fewer than the number of threads (%d),
     so the CPU will be under-utilized.  You may wish to decrease ZD_NumBlock (%d) if memory
     constraints allow.
@@ -81,10 +81,10 @@ public:
         }
 
         double serial_time = wtimer.Elapsed()/omp_get_max_threads();
-        printf("Block IO took %.2f sec to write %.2f GB ==> %.1f MB/sec\n",
+        fprintf(stderr, "Block IO took %.2f sec to write %.2f GB ==> %.1f MB/sec\n",
             serial_time, bytes_written/1e9, bytes_written/1e6/serial_time);
         serial_time = rtimer.Elapsed()/omp_get_max_threads();
-        printf("Block IO took %.2f sec to read %.2f GB ==> %.1f MB/sec\n",
+        fprintf(stderr, "Block IO took %.2f sec to read %.2f GB ==> %.1f MB/sec\n",
             serial_time, bytes_read/1e9, bytes_read/1e6/serial_time);
 
 #else
@@ -198,7 +198,7 @@ public:
         wtimer.increment(thiswtimer.timer);
         bytes_written += totsize*sizeof(Complx);
         files_written++;
-        //printf("StoreBlock took %.3g sec to write %.3g MB ==> %.3g MB/sec\n",
+        //fprintf(stderr, "StoreBlock took %.3g sec to write %.3g MB ==> %.3g MB/sec\n",
         //    wtimer.Elapsed(), totsize/1e6, totsize/1e6/wtimer.Elapsed());
         array_mutex.unlock();
     }
@@ -247,7 +247,7 @@ public:
         array_mutex.lock();
         rtimer.increment(thisrtimer.timer);
         bytes_read += totsize*sizeof(Complx);
-        //printf("LoadBlock took %.3g sec to read %.3g MB ==> %.3g MB/sec\n",
+        //fprintf(stderr, "LoadBlock took %.3g sec to read %.3g MB ==> %.3g MB/sec\n",
         //        rtimer.Elapsed(), totsize/1e6, totsize/1e6/rtimer.Elapsed());
         array_mutex.unlock();
         return;
