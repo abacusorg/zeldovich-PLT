@@ -660,7 +660,7 @@ int main(int argc, char *argv[]) {
         fprintf(stderr,"Using k_cutoff = %f (effective ppd = %d)\n", param.k_cutoff, (int)(param.ppd/param.k_cutoff+.5));
     }
 
-    BlockArray array(param.ppd,param.numblock,narray,param.output_dir,param.ramdisk);
+    BlockArray array(param.ppd,param.numblock,narray,param.output_dir,param.ramdisk, 1);
 
     totaltime.Stop();
     fprintf(stderr,"Preamble took %f seconds\n", totaltime.Elapsed());

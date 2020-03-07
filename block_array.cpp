@@ -31,8 +31,9 @@ public:
     int64_t narray;  // Make int64 to avoid overflow in later calculations
     char TMPDIR[1024];
     int ramdisk;
+    int quickdelete;
 
-    BlockArray(int _ppd, int _numblock, int _narray, char *_dir, int _ramdisk) {
+    BlockArray(int _ppd, int _numblock, int _narray, char *_dir, int _ramdisk, int _quickdelete) {
         ppd = (int64_t) _ppd;
         ppdhalf = ppd/2;
         numblock = _numblock;
@@ -44,6 +45,7 @@ public:
         assert(ppd==numblock*block);   // We'd like the blocks to divide evenly
         size = ppd*ppd*ppd*narray;
         ramdisk = _ramdisk;  // just to silence the compiler; might be overriden below
+        quickdelete = _quickdelete;   // If set, then delete block_array files immediately upon reading, to save the space for the outputs.
 
 #ifdef DISK
     #ifdef DIRECTIO
@@ -71,12 +73,11 @@ public:
     ~BlockArray() {
 #ifdef DISK
         // Clean up the "zeldovich.*.*" files
-        for(int yblock = 0; yblock < numblock; yblock++){
-            for(int zblock = 0; zblock < numblock; zblock++){
-                char filename[1024];
-                int n = snprintf(filename, 1024, "%s/zeldovich.%1d.%1d",TMPDIR,yblock,zblock);
-                assert(n < 1024);
-                remove(filename);
+        if (quickdelete==0) {
+            for(int yblock = 0; yblock < numblock; yblock++){
+                for(int zblock = 0; zblock < numblock; zblock++){
+                    bremove(yblock, zblock);
+                }
             }
         }
 
@@ -158,6 +159,13 @@ private:
     }
   #endif
 
+    void bremove(int yblock, int zblock) {
+        char filename[1024];
+        int n = snprintf(filename, 1024, "%s/zeldovich.%1d.%1d",TMPDIR,yblock,zblock);
+        assert(n < 1024);
+        remove(filename);
+    }
+
 public:
     void StoreBlock(int yblock, int zblock, Complx *slab) {
         // We must be sure to store the block sequentially.
@@ -222,6 +230,7 @@ public:
         FILE *fp = bopen(yblock,zblock,"r");
         bread(fp,StoreBlock_tmp, totsize);
         bclose(fp);
+        if (quickdelete) bremove(yblock, zblock);
 
         int64_t i = 0;
         for (a=0;a<narray;a++)
