@@ -353,6 +353,9 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
             // No-op this math if we aren't going to use it
             if(D != 0.){
                 eigenmode e = get_eigenmode(kx, ky, kz, ppd, param.qPLT);
+
+                double rescale = 1.;
+                f = 1.0;
                 if(param.qPLT){
                     // This is f_growth, the logarithmic derivative of the growth factor that scales the velocities
                     // The corrections are sourced from:
@@ -360,19 +363,19 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
                     // 2) Addition of a smooth, non-clustering component to the background (<= NOT A PLT EFFECT)
                     // If PLT is turned on, we have to combine the effects here.  If not, we apply f_cluster during output.
                     f = (sqrt(1. + 24*e.val*param.f_cluster) - 1)*.25; // 1/4 instead of 1/6 because v = alpha*u/t0 = 3/2*H*alpha*u
-                } else f = 1.0;
-        
-                double rescale = 1.;
-                if(param.qPLTrescale){
-                    /// double a_NL = 1./(1+param.PLT_target_z);
-                    /// double a0 = 1./(1+param.z_initial);
-                    // First is continuum linear theory growth rate, possibly including f_smooth
-                    // Second is PLT growth rate, also including f_smooth
-                    /// double target_f = (sqrt(1. + 24*param.f_cluster) - 1)/4.;
-                    // double plt_f = (sqrt(1. + 24*e.val*param.f_cluster) - 1)/4.;
-                    double plt_f = f;
-                    rescale = pow(a_NL/a0, target_f - plt_f);
+
+                    if(param.qPLTrescale){
+                        /// double a_NL = 1./(1+param.PLT_target_z);
+                        /// double a0 = 1./(1+param.z_initial);
+                        // First is continuum linear theory growth rate, possibly including f_smooth
+                        // Second is PLT growth rate, also including f_smooth
+                        /// double target_f = (sqrt(1. + 24*param.f_cluster) - 1)/4.;
+                        // double plt_f = (sqrt(1. + 24*e.val*param.f_cluster) - 1)/4.;
+                        double plt_f = f;
+                        rescale = pow(a_NL/a0, target_f - plt_f);
+                    }
                 }
+        
                 F = rescale*I*e.vec[0]*ik2*D;
                 G = rescale*I*e.vec[1]*ik2*D;
                 H = rescale*I*e.vec[2]*ik2*D;
