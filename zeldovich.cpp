@@ -495,7 +495,7 @@ void ZeldovichZ(BlockArray& array, Parameters& param, PowerSpectrum& Pk) {
 #define AZYX(_slab,_a,_z,_y,_x) _slab[(int64_t)(_x)+array.ppd*((_y)+array.ppd*((_a)+array.narray*(_z)))]
 
 
-void ZeldovichXY(BlockArray& array, Parameters& param, FILE *output, FILE *densoutput) {
+void ZeldovichXY(BlockArray& array, Parameters& param, FILE *output) {
     // Do the Y & X inverse FFT and output the results.
     // Do this one Z slab at a time; try to load the data in order.
     // Try to write the output file in z order
@@ -550,7 +550,7 @@ void ZeldovichXY(BlockArray& array, Parameters& param, FILE *output, FILE *denso
             int z = zres+array.block*zblock;
             if (param.qoneslab<0||z==param.qoneslab) {
                 // We have the option to output only one z slab.
-                WriteParticlesSlab(output,densoutput,z,
+                WriteParticlesSlab(output,z,
                 &(AZYX(slab,0,zres,0,0)), &(AZYX(slab,1,zres,0,0)),
                 &(AZYX(slab,2,zres,0,0)), &(AZYX(slab,3,zres,0,0)),
                 array, param);
@@ -611,7 +611,7 @@ int main(int argc, char *argv[]) {
     STimer totaltime;
     totaltime.Start();
     
-    FILE *output, *densoutput;
+    FILE *output;
     double memory;
     density_variance = 0.0;
     Parameters param(argv[1]);
@@ -647,11 +647,6 @@ int main(int argc, char *argv[]) {
     fprintf(stderr,"Block size: %5.3f GiB\n", memory/param.numblock/param.numblock);
 #endif
 
-    if (param.qdensity>0) {
-        densoutput = fopen(param.density_filename,"w");
-        assert(densoutput!=NULL);
-    } else densoutput = NULL;
-
     if(param.qPLT){
         load_eigmodes(param);
     }
@@ -678,7 +673,7 @@ int main(int argc, char *argv[]) {
     totaltime.Start();
 
     output = 0; // Current implementation doesn't use user-provided output
-    ZeldovichXY(array, param, output, densoutput);
+    ZeldovichXY(array, param, output);
     totaltime.Stop();
     fprintf(stderr,"Time so far: %f seconds\n", totaltime.Elapsed());
     totaltime.Start();
