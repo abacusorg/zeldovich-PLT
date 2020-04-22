@@ -25,24 +25,32 @@ CPPFLAGS += $(THREAD_CPPFLAGS) $(PARSEHEADER_CPPFLAGS) $(GSL_CPPFLAGS) -DDISK
 
 LIBS += $(PARSEHEADER_LIBS) -lfftw3 $(GSL_LIBS) -lstdc++
 
+TARGETS := zeldovich zeldovich_part1 zeldovich_part2
+OBJ := $(TARGETS:%=%.o)
+
 all: zeldovich 
 
-zeldovich: zeldovich.o | ParseHeader
+$(TARGETS) : % : %.o | ParseHeader
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $< -o $@ $(LIBS)
 
-zeldovich.o: zeldovich.cpp
-	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -MMD -c $<
+$(OBJ): % : zeldovich.cpp
+	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -MMD -c $< -o $@
+
+twopart: zeldovich_part1 zeldovich_part2
+
+zeldovich_part1: CPPFLAGS += -DPART1
+zeldovich_part2: CPPFLAGS += -DPART2
 
 -include zeldovich.d
 
-.PHONY: all clean distclean default
+.PHONY: all clean distclean default twopart
 clean:
 	$(MAKE) -C ParseHeader $@
-	$(RM) *.o *.gch *~
+	$(RM) $(OBJ) *.gch *~
 
 distclean: clean
 	$(MAKE) -C ParseHeader $@
-	$(RM) zeldovich *.d
+	$(RM) $(TARGETS) *.d
 
 ifndef HAVE_COMMON_MK
 ParseHeader: ParseHeader/libparseheader.a

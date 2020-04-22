@@ -605,10 +605,28 @@ void load_eigmodes(Parameters &param){
 
 // ===============================================================
 
+// Determine which parts to emit
+#if defined(PART1)
+    #define NOPART2
+    const int PART = 1;
+    #ifdef PART2
+    #error "Define at most one of PART1 and PART2"
+    #endif
+#elif defined(PART2)
+    #define NOPART1
+    const int PART = 2;
+#else
+    const int PART = -1;
+#endif
+
 int main(int argc, char *argv[]) {
     if (argc != 2){
         fprintf(stderr,"Usage: %s param_file\n", argv[0]);
         exit(1);
+    }
+
+    if(PART > 0){
+        fprintf(stderr, "This is zeldovich part %d\n", PART);
     }
 
     STimer totaltime;
@@ -634,8 +652,15 @@ int main(int argc, char *argv[]) {
     int narray = param.qPLT ? 4 : 2;
     memory = CUBE(param.ppd/1024.0)*narray*sizeof(Complx);
 
+#ifndef NOPART1
     // Remove any existing IC files
-    double _outbufferGiB = InitOutput(param);
+    SetupOutputDir(param);
+#endif
+
+double _outbufferGiB = 0;
+#ifndef NOPART2
+    _outbufferGiB = InitOutputBuffers(param);
+#endif
 
 #ifdef DISK
     fprintf(stderr,"Compiled with -DDISK; blocks will be buffered on disk.\n");
@@ -658,7 +683,8 @@ int main(int argc, char *argv[]) {
         fprintf(stderr,"Using k_cutoff = %f (effective ppd = %d)\n", param.k_cutoff, (int)(param.ppd/param.k_cutoff+.5));
     }
 
-    BlockArray array(param.ppd,param.numblock,narray,param.output_dir,param.ramdisk, 1);
+    int quickdelete = 1;
+    BlockArray array(param.ppd,param.numblock,narray,param.output_dir,param.ramdisk, quickdelete, PART);
 
     totaltime.Stop();
     fprintf(stderr,"Preamble took %f seconds\n", totaltime.Elapsed());
@@ -669,12 +695,15 @@ int main(int argc, char *argv[]) {
     fprintf(stderr,"Time so far: %f seconds\n", totaltime.Elapsed());
     totaltime.Start();
 
+#ifndef NOPART1
     ZeldovichZ(array, param, Pk);
     fprintf(stderr,"Wrote %d files\n", array.files_written);
     totaltime.Stop();
     fprintf(stderr,"Time so far: %f seconds\n", totaltime.Elapsed());
     totaltime.Start();
+#endif
 
+#ifndef NOPART2
     output = 0; // Current implementation doesn't use user-provided output
     ZeldovichXY(array, param, output);
     totaltime.Stop();
@@ -691,12 +720,13 @@ int main(int argc, char *argv[]) {
     totaltime.Stop();
     fprintf(stderr,"Time so far: %f seconds\n", totaltime.Elapsed());
     totaltime.Start();
+
+    TeardownOutput();
+#endif
     
     if(param.qPLT)
         free(eig_vecs);
         // delete[] eig_vecs;
-
-    TeardownOutput();
 
     totaltime.Stop();
     fprintf(stderr, "zeldovich took %.4g sec for ppd %lu ==> %.3g Mpart/sec\n",

@@ -185,11 +185,13 @@ BlockArray& array, Parameters& param) {
 int CleanDirectory(const char *path);
 int CreateDirectories(const char *path);
 
-// Returns GiB size of allocated buffer
-double InitOutput(Parameters &param){
+void SetupOutputDir(Parameters &param){
     CleanDirectory(param.output_dir);
     CreateDirectories(param.output_dir);
+}
 
+// Returns GiB size of allocated buffer
+double InitOutputBuffers(Parameters &param){
     if(strcmp(param.ICFormat, "RVdoubleZel") == 0){
         param_icformat = OUTPUT_RVDOUBLEZEL;
         output_tmp = new RVdoubleZelParticle[param.ppd*param.ppd];
@@ -211,7 +213,7 @@ double InitOutput(Parameters &param){
     if(param.qdensity){
         char fn[256];
         sprintf(fn, param.density_filename, param.ppd);
-        char path[1080];
+        char path[1300];
         sprintf(path, "%s/%s", param.output_dir, fn);
         densfp = fopen(path, "wb");
         assert(densfp != NULL);
