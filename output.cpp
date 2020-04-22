@@ -9,6 +9,7 @@
 #include <string.h>
 #include <limits.h>     /* PATH_MAX */
 #include <errno.h>
+#include <mutex>
 
 #define YX(_slab,_y,_x) _slab[(_x)+array.ppd*(_y)]
 
@@ -17,8 +18,11 @@
 
 double density_variance;
 void *output_tmp;  // output buffer
+float *densoutput_tmp;  // dens output buffer
+FILE *densfp;  // dens output fp
 STimer outtimer;
 size_t output_bytes_written = 0;
+std::mutex output_mutex;
 
 class ZelParticle {
 public:
@@ -42,10 +46,12 @@ enum OutputType {OUTPUT_ZEL, OUTPUT_RVZEL, OUTPUT_RVDOUBLEZEL};
 OutputType param_icformat;
 size_t sizeof_outputtype;
 
-void WriteParticlesSlab(FILE *output, FILE *densoutput, 
+void WriteParticlesSlab(FILE *output, 
 int z, Complx *slab1, Complx *slab2, Complx *slab3, Complx *slab4,
 BlockArray& array, Parameters& param) {
-    outtimer.Start();
+    STimer thisouttimer;
+    thisouttimer.Start();
+    double thisdensity_variance=0.0;
 
     // Write out one slab of particles
     int x,y;
@@ -108,7 +114,7 @@ BlockArray& array, Parameters& param) {
                     out.i = z; out.j =y; out.k = x;
                     out.displ[0] = pos[2]; out.displ[1] = pos[1]; out.displ[2] = pos[0];
                     out.vel[0] = vel[2]; out.vel[1] = vel[1]; out.vel[2] = vel[0];
-                    ((RVdoubleZelParticle *) output_tmp)[i++] = out;
+                    ((RVdoubleZelParticle *) output_tmp)[i] = out;
                     break;
                 }
 
@@ -117,7 +123,7 @@ BlockArray& array, Parameters& param) {
                     out.i = z; out.j =y; out.k = x;
                     out.displ[0] = pos[2]; out.displ[1] = pos[1]; out.displ[2] = pos[0];
                     out.vel[0] = vel[2]; out.vel[1] = vel[1]; out.vel[2] = vel[0];
-                    ((RVZelParticle *) output_tmp)[i++] = out;
+                    ((RVZelParticle *) output_tmp)[i] = out;
                     break;
                 }
 
@@ -125,7 +131,7 @@ BlockArray& array, Parameters& param) {
                     ZelParticle out;
                     out.i = z; out.j =y; out.k = x;
                     out.displ[0] = pos[2]; out.displ[1] = pos[1]; out.displ[2] = pos[0];
-                    ((ZelParticle *) output_tmp)[i++] = out;
+                    ((ZelParticle *) output_tmp)[i] = out;
                     break;
                 }
 
@@ -133,24 +139,20 @@ BlockArray& array, Parameters& param) {
                     fprintf(stderr, "Error: unknown ICFormat \"%s\". Aborting.\n", param.ICFormat);
                     exit(1);
             }
-            //           fwrite(vel,sizeof(float),3,output);
-            //           int *id;
-            //           id = new int;
-            //           *id = x+(y*param.ppd)+(z*param.ppd*param.ppd);
-            //           if (*id <0) std::cout <<"Bad id: "<<*id<<"\n";
-            //           fwrite(id,sizeof(int),1,output);
-            //           fwrite(id,sizeof(int),1,output);
-            //           if (densoutput!=NULL) fwrite(pos+3,sizeof(float),1,densoutput);
-            //           delete id;
+
+            if(param.qdensity)
+                densoutput_tmp[i] = pos[3];  // casts to float
         }
-        density_variance += pos[3]*pos[3];
+        thisdensity_variance += pos[3]*pos[3];
         
         // Track the global max displacement
-        for(int i = 0; i < 3; i++){
-            max_disp[i] = pos[i] > max_disp[i] ? pos[i] : max_disp[i];
+        for(int j = 0; j < 3; j++){
+            max_disp[j] = pos[j] > max_disp[j] ? pos[j] : max_disp[j];
         }
 
         // cic->add_cic(param.boxsize,pos);
+
+        i++;
     }
 
     assert(i == param.ppd*param.ppd);
@@ -161,11 +163,21 @@ BlockArray& array, Parameters& param) {
     output = fopen(fn,"ab");
     fwrite(output_tmp, sizeof_outputtype, param.ppd*param.ppd, output);
     fclose(output);
-
-
-    outtimer.Stop();
     int64_t totsize = array.ppd*array.ppd*sizeof_outputtype;
+
+    // Append to the density file
+    if (param.qdensity) {
+        // This whole function is called in z order presently, so we just append density planes to the same file
+        fwrite(densoutput_tmp, sizeof(*densoutput_tmp)*array.ppd*array.ppd, 1, densfp);
+        totsize += sizeof(*densoutput_tmp)*array.ppd*array.ppd;
+    }
+
+    thisouttimer.Stop();
+    output_mutex.lock();
     output_bytes_written += totsize;
+    outtimer.increment(thisouttimer.timer);
+    density_variance += thisdensity_variance;
+    output_mutex.unlock();
     
     return;
 }
@@ -196,6 +208,16 @@ double InitOutput(Parameters &param){
         exit(1);
     }
 
+    if(param.qdensity){
+        char fn[256];
+        sprintf(fn, param.density_filename, param.ppd);
+        char path[1080];
+        sprintf(path, "%s/%s", param.output_dir, fn);
+        densfp = fopen(path, "wb");
+        assert(densfp != NULL);
+        densoutput_tmp = new float[param.ppd*param.ppd];
+    }
+
     return sizeof_outputtype*param.ppd*param.ppd/1024./1024./1024.;
 }
 
@@ -212,6 +234,11 @@ void TeardownOutput(){
         case OUTPUT_ZEL:
             delete[] (ZelParticle *) output_tmp;
             break;
+    }
+
+    if(densoutput_tmp != NULL){
+        delete[] densoutput_tmp;
+        fclose(densfp);
     }
 
     fprintf(stderr, "WriteParticlesSlab took %.3g sec to write %.3g MB ==> %.3g MB/sec\n",

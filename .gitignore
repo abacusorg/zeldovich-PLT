@@ -7,3 +7,4 @@ ParseHeader
 *.d
 *.par
 FREEZE
+fftw_zeldovich.wisdom

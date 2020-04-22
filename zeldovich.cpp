@@ -83,20 +83,35 @@ double max_disp[3];
 #include "fftw3.h"
 fftw_plan plan1d, plan2d;
 void Setup_FFTW(int n) {
+    STimer FFTplanning;
 
-    // For big n, this is slow enough to notice
-    if(n >= 512)
-        fprintf(stderr,"Creating FFTW plans...");
+    FFTplanning.Start();
+    char wisdom_file[1024];
+    int wisdom_exists;
+    sprintf(wisdom_file, "fftw_zeldovich.wisdom"); 
+        // TODO: Where to put this file?  param.output_dir?  Or in the repository?
+        // Currently in the repository
+    wisdom_exists = fftw_import_wisdom_from_filename(wisdom_file);
+    fprintf(stderr,"FFTW Wisdom import from file \"%s\" returned %d (%s).\n", wisdom_file, wisdom_exists, wisdom_exists == 1 ? "success" : "failure");
 
-    fftw_complex *p = (fftw_complex *) fftw_malloc(sizeof(fftw_complex)*n*n);
-    assert(p != NULL);
+    fftw_complex *p;
+    // p = new fftw_complex[n*n];
+    int ret = posix_memalign((void **)&p, 4096, n*n*sizeof(Complx));
     plan1d = fftw_plan_dft_1d(n, p, p, +1, FFTW_PATIENT);
     plan2d = fftw_plan_dft_2d(n, n, p, p, +1, FFTW_PATIENT);
-    fftw_free(p);
-
-    if(n >= 512)
-        fprintf(stderr," done.\n");
+    free(p);
+    // delete []p;
+    ret = fftw_export_wisdom_to_filename(wisdom_file);
+    fprintf(stderr,"FFTW Wisdom export to file \"%s\" returned %d.\n", wisdom_file, ret);
+    FFTplanning.Stop();
+    fprintf(stderr,"Creating FFTW plans done in %f sec.\n", FFTplanning.Elapsed());
 }
+
+// TODO: This handling of the memory allocation required for plans 
+// doesn't seem exceptionally safe.  Is it really true that "new Complx"
+// always returns a suitably aligned variable? 
+// And we're trusting that every 2-d plane ends up aligned, although
+// this has a better chance of being ok because we require an even PPD.
 
 void Inverse1dFFT(Complx *p, int n) {
     // Given a pointer to a 1d complex vector, packed as p[n].
@@ -116,15 +131,19 @@ void InverseFFT_Yonly(Complx *p, int n) {
     // our 3-d problem!
     Complx *tmp;
     int j,k;
-    tmp = (Complx *) fftw_malloc(sizeof(Complx)*n);
-    assert(tmp != NULL);
+    int ret = posix_memalign((void **)&tmp, 4096, n*sizeof(Complx));
+    assert(ret==0);
+
+    // tmp = new Complx[n];
+
     for (j=0;j<n;j++) {
         // We will load one row at a time
         for (k=0;k<n;k++) tmp[k] = p[k*n+j];
         Inverse1dFFT(tmp, n);
         for (k=0;k<n;k++) p[k*n+j] = tmp[k];
     }
-    fftw_free(tmp);
+    free(tmp);
+    //delete []tmp;
 }
 
 //================================================================
@@ -141,6 +160,7 @@ typedef struct {
 void interp_eigmode(int ikx, int iky, int ikz, int64_t ppd, double *e){
 #define EIGMODE(_kx,_ky,_kz,_i) (eig_vecs[(int64_t)(_kx)*eig_vecs_ppd*halfppd*4 + (_ky)*halfppd*4 + (_kz)*4 + (_i)])
     int64_t halfppd = eig_vecs_ppd/2 + 1;
+    int64_t ppdhalf = eig_vecs_ppd/2;
     if(eig_vecs_ppd % ppd == 0){
         for(int i = 0; i < 4; i++)
             e[i] = EIGMODE(ikx*eig_vecs_ppd/ppd, iky*eig_vecs_ppd/ppd, ikz*eig_vecs_ppd/ppd, i);
@@ -153,11 +173,14 @@ void interp_eigmode(int ikx, int iky, int ikz, int64_t ppd, double *e){
     
     // For ppd 64, [0,32] are positive k, [33,63] are negative
     // So don't interpolate between 32-33!  Map upwards instead.
-    if(fx > eig_vecs_ppd/2 && fx < eig_vecs_ppd/2 + 1)
+    // if(fx > eig_vecs_ppd/2 && fx < eig_vecs_ppd/2 + 1)
+    // if(fy > eig_vecs_ppd/2 && fy < eig_vecs_ppd/2 + 1)
+    // if(fz > eig_vecs_ppd/2 && fz < eig_vecs_ppd/2 + 1)
+    if(fx > ppdhalf && fx < halfppd)
         fx = floor(fx+1);
-    if(fy > eig_vecs_ppd/2 && fy < eig_vecs_ppd/2 + 1)
+    if(fy > ppdhalf && fy < halfppd)
         fy = floor(fy+1);
-    if(fz > eig_vecs_ppd/2 && fz < eig_vecs_ppd/2 + 1)
+    if(fz > ppdhalf && fz < halfppd)
         fz = floor(fz+1);
     
     // Build the indices of the nearest grid points
@@ -189,7 +212,7 @@ void interp_eigmode(int ikx, int iky, int ikz, int64_t ppd, double *e){
     f[5] = (fx) * (1 - fy) * (fz); 
     f[6] = (fx) * (fy) * (1 - fz);
     f[7] = (fx) * (fy) * (fz);
-    
+
     // Treat the eigenmode struct as 4 doubles
     for(int i = 0; i < 4; i++){
         e[i] = f[0]*EIGMODE(ikx_l, iky_l, ikz_l, i) + f[1]*EIGMODE(ikx_l, iky_l, ikz_h, i) +
@@ -245,13 +268,27 @@ eigenmode get_eigenmode(int kx, int ky, int kz, int64_t ppd, int qPLT){
 void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk, 
                 int yblock, int yres, Complx *slab, Complx *slabHer) {
     // Note that this function is called from within a parallel for-loop over yres
+    // STimer cpu, fft;
+    // cpu.Start();
 
-    Complx D,F,G,H,f;
+    Complx D,F,G,H;
+    double f;
     Complx I(0.0,1.0);
     double k2;
     unsigned int a;
     int x,y,z, kx,ky,kz, xHer,yresHer,zHer;
     int64_t ppd = array.ppd;
+    int64_t ppdhalf = array.ppdhalf;
+    double ifundamental = 1.0/param.fundamental; // store the inverse
+    double fundamental2 = param.fundamental*param.fundamental; // store the square
+    double ik_cutoff = 1.0/param.k_cutoff;   // store the inverse
+
+    double target_f = (sqrt(1. + 24*param.f_cluster) - 1)/4.;
+    double a_NL, a0;
+    if(param.qPLTrescale){
+        a_NL = 1./(1+param.PLT_target_z);
+        a0 = 1./(1+param.z_initial);
+    } else { a_NL = a0 = 1.0; }
 
     // How many RNG calls do we skip?  We'll fast-forward this amount each time we resume
     int64_t nskip = 0;
@@ -266,25 +303,25 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
         checkpoint = v2rng[y];
     } 
 
-    ky = y>ppd/2?y-ppd:y;        // Nyquist wrapping
+    ky = y>ppdhalf?y-ppd:y;        // Nyquist wrapping
     yresHer = array.block-1-yres;         // Reflection
     for (z=0;z<ppd;z++) {
         // Just crossed the wrap, skip MAX_PPD-ppd rows
-        if(z == ppd/2+1 && ver == 2)
+        if(z == ppdhalf+1 && ver == 2)
             nskip += (MAX_PPD - ppd)*MAX_PPD;
-        kz = z>ppd/2?z-ppd:z;        // Nyquist wrapping
+        kz = z>ppdhalf?z-ppd:z;        // Nyquist wrapping
         zHer = ppd-z; if (z==0) zHer=0;     // Reflection
         for (x=0;x<ppd;x++) {
             // Just cross the wrap, skip MAX_PPD-ppd particles
-            if(x == ppd/2+1 && ver == 2)
+            if(x == ppdhalf+1 && ver == 2)
                 nskip += MAX_PPD - ppd;
-            kx = x>ppd/2?x-ppd:x;        // Nyquist wrapping
+            kx = x>ppdhalf?x-ppd:x;        // Nyquist wrapping
             xHer = ppd-x; if (x==0) xHer=0;    // Reflection
             // We will pack two complex arrays
-            k2 = (kx*kx+ky*ky+kz*kz)*param.fundamental*param.fundamental;
+            k2 = (kx*kx+ky*ky+kz*kz)*fundamental2;
             
             // Force Nyquist elements to zero, being extra careful with rounding
-            int kmax = ppd/2./param.k_cutoff+.5;
+            int kmax = (double)ppdhalf*ik_cutoff+.5;
             if ( (abs(kx)==kmax || abs(kz)==kmax || abs(ky)==kmax)
                     // Force all elements with wavenumber above k_cutoff (nominally k_Nyquist) to zero
                     || (k2>=k2_cutoff)
@@ -300,7 +337,6 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
                     v2rng[y].advance(2*nskip);
                     nskip = 0;
                 }
-
                 D = Pk.cgauss<2>(sqrt(k2), y);
             } else {
                 // We deliberately only call cgauss() if we are inside the k_cutoff region
@@ -309,27 +345,17 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
             }
             // D = 0.1;    // If we need a known level
             
-            k2 /= param.fundamental; // Get units of F,G,H right
+            k2 *= ifundamental; // Get units of F,G,H right
             if (k2==0.0) k2 = 1.0;  // Avoid divide by zero
             // if (!(ky==5)) D=0.0;    // Pick out one plane
+            double ik2 = 1.0/k2;
             
             // No-op this math if we aren't going to use it
             if(D != 0.){
                 eigenmode e = get_eigenmode(kx, ky, kz, ppd, param.qPLT);
+
                 double rescale = 1.;
-                if(param.qPLTrescale){
-                    double a_NL = 1./(1+param.PLT_target_z);
-                    double a0 = 1./(1+param.z_initial);
-                    // First is continuum linear theory growth rate, possibly including f_smooth
-                    // Second is PLT growth rate, also including f_smooth
-                    double target_f = (sqrt(1. + 24*param.f_cluster) - 1)/4.;
-                    double plt_f = (sqrt(1. + 24*e.val*param.f_cluster) - 1)/4.;
-                    rescale = pow(a_NL/a0, target_f - plt_f);
-                }
-                F = rescale*I*e.vec[0]/k2*D;
-                G = rescale*I*e.vec[1]/k2*D;
-                H = rescale*I*e.vec[2]/k2*D;
-                
+                f = 1.0;
                 if(param.qPLT){
                     // This is f_growth, the logarithmic derivative of the growth factor that scales the velocities
                     // The corrections are sourced from:
@@ -337,9 +363,25 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
                     // 2) Addition of a smooth, non-clustering component to the background (<= NOT A PLT EFFECT)
                     // If PLT is turned on, we have to combine the effects here.  If not, we apply f_cluster during output.
                     f = (sqrt(1. + 24*e.val*param.f_cluster) - 1)*.25; // 1/4 instead of 1/6 because v = alpha*u/t0 = 3/2*H*alpha*u
+
+                    if(param.qPLTrescale){
+                        /// double a_NL = 1./(1+param.PLT_target_z);
+                        /// double a0 = 1./(1+param.z_initial);
+                        // First is continuum linear theory growth rate, possibly including f_smooth
+                        // Second is PLT growth rate, also including f_smooth
+                        /// double target_f = (sqrt(1. + 24*param.f_cluster) - 1)/4.;
+                        // double plt_f = (sqrt(1. + 24*e.val*param.f_cluster) - 1)/4.;
+                        double plt_f = f;
+                        rescale = pow(a_NL/a0, target_f - plt_f);
+                    }
                 }
+        
+                F = rescale*I*e.vec[0]*ik2*D;
+                G = rescale*I*e.vec[1]*ik2*D;
+                H = rescale*I*e.vec[2]*ik2*D;
             } else {
-                F = G = H = f = 0.;
+                F = G = H = 0.0;
+                f = 0.;
             }
             
             // fprintf(stderr,"%d %d %d   %d %d %d   %f   %f %f\n",
@@ -381,10 +423,10 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
     // half of it back.
     if (yblock==0&&yres==0) {
         // Copy the first half plane onto the second
-        for (z=0;z<ppd/2;z++) {
+        for (z=0;z<ppdhalf;z++) {
             zHer = ppd-z; if (z==0) zHer=0;
             // Treat y=z=0 as a half line
-            int xmax = (z==0?ppd/2:ppd);
+            int xmax = (z==0?ppdhalf:ppd);
             for (x=0;x<xmax;x++) {
                 xHer = ppd-x;if (x==0) xHer=0;
                 for (a=0;a<array.narray;a++) {
@@ -398,10 +440,14 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
     }
 
     // Now do the Z FFTs, since those data are contiguous
+    // cpu.Stop();
+    // fft.Start();
     for (a=0;a<array.narray;a++) {
         InverseFFT_Yonly(&(AYZX(slab,a,yres,0,0)),ppd);
         InverseFFT_Yonly(&(AYZX(slabHer,a,yresHer,0,0)),ppd);
     }
+    // fft.Stop();
+    // printf("FFT fraction %f\n", fft.Elapsed()/(cpu.Elapsed()+fft.Elapsed()));
     return;
 }
 
@@ -413,30 +459,36 @@ void ZeldovichZ(BlockArray& array, Parameters& param, PowerSpectrum& Pk) {
     Complx *slab, *slabHer;
     int yblock,zblock;
     int64_t len = (int64_t)array.block*array.ppd*array.ppd*array.narray;
-    slab    = (Complx *) fftw_malloc(sizeof(Complx)*len);
-    slabHer = (Complx *) fftw_malloc(sizeof(Complx)*len);
-    assert(slab != NULL && slabHer != NULL);
+    slab    = new Complx[len];
+    slabHer = new Complx[len];
+    STimer compute_planes, storing;
     //
     fprintf(stderr,"Looping over Y: ");
     for (yblock=0;yblock<array.numblock/2;yblock++) {
         // We're going to do each pair of Y slabs separately.
         // Load the deltas and do the FFTs for each pair of planes
         fprintf(stderr,".."); fflush(stderr);
-        #pragma omp parallel for schedule(static)
+        compute_planes.Start();
+        #pragma omp parallel for schedule(dynamic,1)
         for (int yres=0;yres<array.block;yres++) {     
             LoadPlane(array,param,Pk,yblock,yres,slab,slabHer);
         }
+        compute_planes.Stop();
 
         // Now store it into the primary BlockArray.  
         // Can't openMP an I/O loop.
+        storing.Start();
+        #pragma omp parallel for schedule(dynamic,1)
         for (zblock=0;zblock<array.numblock;zblock++) {
             array.StoreBlock(yblock,zblock,slab);
             array.StoreBlock(array.numblock-1-yblock,zblock,slabHer);
         }
+        storing.Stop();
     }  // End yblock for loop
-    fftw_free(slabHer);
-    fftw_free(slab);
+    delete[] slabHer;
+    delete[] slab;
     fprintf(stderr,"\n");
+    fprintf(stderr,"Computing, Saving the Planes took %f %f sec\n", compute_planes.Elapsed(), storing.Elapsed());
     return;
 }
 
@@ -446,32 +498,37 @@ void ZeldovichZ(BlockArray& array, Parameters& param, PowerSpectrum& Pk) {
 #define AZYX(_slab,_a,_z,_y,_x) _slab[(int64_t)(_x)+array.ppd*((_y)+array.ppd*((_a)+array.narray*(_z)))]
 
 
-void ZeldovichXY(BlockArray& array, Parameters& param, FILE *output, FILE *densoutput) {
+void ZeldovichXY(BlockArray& array, Parameters& param, FILE *output) {
     // Do the Y & X inverse FFT and output the results.
     // Do this one Z slab at a time; try to load the data in order.
     // Try to write the output file in z order
     
     Complx *slab;
     int64_t len = (int64_t)array.block*array.ppd*array.ppd*array.narray;
-    slab = (Complx *) fftw_malloc(sizeof(Complx)*len);
-    assert(slab != NULL);
+    slab = new Complx[len];
     unsigned int a;
-    int x,yblock,y,zblock,z;
+    int x,yblock,y,zblock;
     fprintf(stderr,"Looping over Z: ");
+    STimer loading, writing, fft;
 
     for (zblock=0;zblock<array.numblock;zblock++) {
         // We'll do one Z slab at a time
         // Load the slab back in.  
         // Can't openMP an I/O loop.
+        loading.Start();
         fprintf(stderr,".");
+        #pragma omp parallel for schedule(dynamic,1)
         for (yblock=0;yblock<array.numblock;yblock++) {
             array.LoadBlock(yblock, zblock, slab);
         } 
+        loading.Stop();
 
         // The Nyquist frequency y=array.ppd/2 must now be set to 0
         // because we shifted the data by one location.
         // FLAW: this assumes PPD is even.
+        fft.Start();
         y = array.ppd/2;
+        #pragma omp parallel for schedule(static)
         for (int zres=0;zres<array.block;zres++) {
             for (a=0;a<array.narray;a++) {
                 for (x=0;x<array.ppd;x++) AZYX(slab,a,zres,y,x) = 0.0;
@@ -480,32 +537,33 @@ void ZeldovichXY(BlockArray& array, Parameters& param, FILE *output, FILE *denso
 
         // Now we want to do the Y & X inverse FFT.
         for (a=0;a<array.narray;a++) {
-            #pragma omp parallel for schedule(static)
+            #pragma omp parallel for schedule(dynamic,1)
             for (int zres=0;zres<array.block;zres++) {
                 Inverse2dFFT(&(AZYX(slab,a,zres,0,0)),array.ppd);
             }
         }
+        fft.Stop();
 
         // Now write out these rows of [z][y][x] positions
-        // Can't openMP an I/O loop.
-        
+        // TODO: For now, we can't openMP an I/O loop.
+        // There are internal buffers in the output routines that need to be made thread-safe.
 
+        writing.Start();
         for (int zres=0;zres<array.block;zres++) {
-            z = zres+array.block*zblock;
+            int z = zres+array.block*zblock;
             if (param.qoneslab<0||z==param.qoneslab) {
                 // We have the option to output only one z slab.
-
-
-
-                WriteParticlesSlab(output,densoutput,z,
+                WriteParticlesSlab(output,z,
                 &(AZYX(slab,0,zres,0,0)), &(AZYX(slab,1,zres,0,0)),
                 &(AZYX(slab,2,zres,0,0)), &(AZYX(slab,3,zres,0,0)),
                 array, param);
             }
         }
+        writing.Stop();
     } // End zblock for loop
-    fftw_free(slab);
+    delete[] slab;
     fprintf(stderr,"\n");
+    fprintf(stderr,"Loading, FFTs, Writing took %f %f %f seconds\n", loading.Elapsed(), fft.Elapsed(), writing.Elapsed());
     return;
 }
 
@@ -537,11 +595,15 @@ void load_eigmodes(Parameters &param){
         exit(1);
     }
     
-    eig_vecs = new double[nelem];
+    // eig_vecs = new double[nelem];
+    int ret = posix_memalign((void **)&eig_vecs, 4096, sizeof(double)*nelem);
+    assert(ret==0);
     eigf.read((char*) eig_vecs, nbytes);
     
     eigf.close();
 }
+
+// ===============================================================
 
 int main(int argc, char *argv[]) {
     if (argc != 2){
@@ -552,7 +614,7 @@ int main(int argc, char *argv[]) {
     STimer totaltime;
     totaltime.Start();
     
-    FILE *output, *densoutput;
+    FILE *output;
     double memory;
     density_variance = 0.0;
     Parameters param(argv[1]);
@@ -588,11 +650,6 @@ int main(int argc, char *argv[]) {
     fprintf(stderr,"Block size: %5.3f GiB\n", memory/param.numblock/param.numblock);
 #endif
 
-    if (param.qdensity>0) {
-        densoutput = fopen(param.density_filename,"w");
-        assert(densoutput!=NULL);
-    } else densoutput = NULL;
-
     if(param.qPLT){
         load_eigmodes(param);
     }
@@ -601,14 +658,28 @@ int main(int argc, char *argv[]) {
         fprintf(stderr,"Using k_cutoff = %f (effective ppd = %d)\n", param.k_cutoff, (int)(param.ppd/param.k_cutoff+.5));
     }
 
-    BlockArray array(param.ppd,param.numblock,narray,param.output_dir,param.ramdisk);
+    BlockArray array(param.ppd,param.numblock,narray,param.output_dir,param.ramdisk, 1);
 
+    totaltime.Stop();
+    fprintf(stderr,"Preamble took %f seconds\n", totaltime.Elapsed());
+    totaltime.Start();
     Setup_FFTW(param.ppd);
 
+    totaltime.Stop();
+    fprintf(stderr,"Time so far: %f seconds\n", totaltime.Elapsed());
+    totaltime.Start();
+
     ZeldovichZ(array, param, Pk);
+    fprintf(stderr,"Wrote %d files\n", array.files_written);
+    totaltime.Stop();
+    fprintf(stderr,"Time so far: %f seconds\n", totaltime.Elapsed());
+    totaltime.Start();
 
     output = 0; // Current implementation doesn't use user-provided output
-    ZeldovichXY(array, param, output, densoutput);
+    ZeldovichXY(array, param, output);
+    totaltime.Stop();
+    fprintf(stderr,"Time so far: %f seconds\n", totaltime.Elapsed());
+    totaltime.Start();
 
     fprintf(stderr,"The rms density variation of the pixels is %f\n", sqrt(density_variance/CUBE(param.ppd)));
     fprintf(stderr,"This could be compared to the P(k) prediction of %f\n",
@@ -617,14 +688,18 @@ int main(int argc, char *argv[]) {
     fprintf(stderr,"The maximum component-wise displacements are (%g, %g, %g), same units as BoxSize.\n", max_disp[0], max_disp[1], max_disp[2]);
     fprintf(stderr,"For Abacus' 2LPT implementation to work (assuming FINISH_WAIT_RADIUS = 1),\n\tthis implies a maximum CPD of %d\n", (int) (param.boxsize/(2*max_disp[2])));  // The slab direction is z in this code
     // fclose(output);
+    totaltime.Stop();
+    fprintf(stderr,"Time so far: %f seconds\n", totaltime.Elapsed());
+    totaltime.Start();
     
     if(param.qPLT)
-        delete[] eig_vecs;
+        free(eig_vecs);
+        // delete[] eig_vecs;
 
     TeardownOutput();
 
     totaltime.Stop();
-    fprintf(stderr,"zeldovich took %.3g sec for ppd %lu ==> %.2g Mpart/sec\n",
+    fprintf(stderr, "zeldovich took %.4g sec for ppd %lu ==> %.3g Mpart/sec\n",
         totaltime.Elapsed(), param.ppd, param.np/1e6/totaltime.Elapsed());
     
     return 0;

@@ -77,7 +77,7 @@ public:
         seed = 0;    // Legal default
         strcpy(Pk_filename,"");   // Must specify Pk file or power law
         Pk_powerlaw_index = NAN;  // Must specify Pk file or power law
-        strcpy(density_filename,"output.density");  // Legal default
+        strcpy(density_filename,"density%d");  // Legal default
         qonemode = 0; // Legal default
         memset(one_mode, 0, 3*sizeof(int)); // Legal default
         qPLT = 0; // Legal default
