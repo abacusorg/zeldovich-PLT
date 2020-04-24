@@ -1,5 +1,8 @@
 #include "STimer.cc"
 #include <mutex>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 // We use a set of X-Z arrays of Complx numbers (ordered by A and Y).
 // ppd is 64-bit, so this expression should be safe from overflow
@@ -32,8 +35,9 @@ public:
     char TMPDIR[1024];
     int ramdisk;
     int quickdelete;
+    int part;
 
-    BlockArray(int _ppd, int _numblock, int _narray, char *_dir, int _ramdisk, int _quickdelete) {
+    BlockArray(int _ppd, int _numblock, int _narray, char *_dir, int _ramdisk, int _quickdelete, int _part) {
         ppd = (int64_t) _ppd;
         ppdhalf = ppd/2;
         numblock = _numblock;
@@ -46,12 +50,27 @@ public:
         size = ppd*ppd*ppd*narray;
         ramdisk = _ramdisk;  // just to silence the compiler; might be overriden below
         quickdelete = _quickdelete;   // If set, then delete block_array files immediately upon reading, to save the space for the outputs.
+        part = _part;  // part 1 (Z), part 2 (XY), or part -1 (both)
 
 #ifdef DISK
     #ifdef DIRECTIO
         fileoffset = 0;
         diskbuffer = 1024*512;  // Magic number pulled from io_dio.cpp
     #endif
+
+    if(part != 2){
+        // Make directories for the zeldovich blocks
+        for(int yblock = 0; yblock < numblock; yblock++){
+            char blockdir[1100];
+            sprintf(blockdir, "%s/zeldovich.%1d", TMPDIR, yblock);
+            int ret = mkdir(blockdir, 0775);
+            int reason = errno;
+            if(ret != 0 && reason != EEXIST){
+                fprintf(stderr, "mkdir(\"%s\") failed for reason %s\n", blockdir, strerror(reason));
+                exit(1);
+            }
+        }
+    }
 #else
         arr = new Complx[size];
 #endif
@@ -72,21 +91,32 @@ public:
     }
     ~BlockArray() {
 #ifdef DISK
+    if(part != 1){
         // Clean up the "zeldovich.*.*" files
-        if (quickdelete==0) {
-            for(int yblock = 0; yblock < numblock; yblock++){
+        for(int yblock = 0; yblock < numblock; yblock++){
+            if(!quickdelete){
                 for(int zblock = 0; zblock < numblock; zblock++){
                     bremove(yblock, zblock);
                 }
             }
+            // Remove the block directory
+            char blockdir[1100];
+            sprintf(blockdir, "%s/zeldovich.%1d", TMPDIR, yblock);
+            int ret = rmdir(blockdir);
+            int reason = errno;
+            if(ret != 0){
+                fprintf(stderr, "rmdir(\"%s\") failed for reason %s\n", blockdir, strerror(reason));
+                exit(1);
+            }
         }
+    }
 
-        double serial_time = wtimer.Elapsed()/omp_get_max_threads();
-        fprintf(stderr, "Block IO took %.2f sec to write %.2f GB ==> %.1f MB/sec\n",
-            serial_time, bytes_written/1e9, bytes_written/1e6/serial_time);
-        serial_time = rtimer.Elapsed()/omp_get_max_threads();
-        fprintf(stderr, "Block IO took %.2f sec to read %.2f GB ==> %.1f MB/sec\n",
-            serial_time, bytes_read/1e9, bytes_read/1e6/serial_time);
+    double serial_time = wtimer.Elapsed()/omp_get_max_threads();
+    fprintf(stderr, "Block IO took %.2f sec to write %.2f GB ==> %.1f MB/sec\n",
+        serial_time, bytes_written/1e9, bytes_written/1e6/serial_time);
+    serial_time = rtimer.Elapsed()/omp_get_max_threads();
+    fprintf(stderr, "Block IO took %.2f sec to read %.2f GB ==> %.1f MB/sec\n",
+        serial_time, bytes_read/1e9, bytes_read/1e6/serial_time);
 
 #else
         delete []arr;
@@ -107,7 +137,7 @@ private:
         assert(yblock>=0&&yblock<numblock);
         assert(zblock>=0&&zblock<numblock);
         char filename[1024];
-        sprintf(filename,"%s/zeldovich.%1d.%1d",TMPDIR,yblock,zblock);
+        sprintf(filename,"%s/zeldovich.%1d/zeldovich.%1d.%1d",TMPDIR,yblock,yblock,zblock);
         FILE * outfile = fopen(filename,"a");
         assert(outfile != NULL);
         fclose(outfile);
@@ -137,8 +167,8 @@ private:
         // Set up for reading or writing this block
         assert(yblock>=0&&yblock<numblock);
         assert(zblock>=0&&zblock<numblock);
-        char filename[1024];
-        sprintf(filename,"%s/zeldovich.%1d.%1d",TMPDIR,yblock,zblock);
+        char filename[1100];
+        sprintf(filename,"%s/zeldovich.%1d/zeldovich.%1d.%1d",TMPDIR,yblock,yblock,zblock);
 
         FILE *fp;
         fp = fopen(filename,mode);
@@ -160,9 +190,8 @@ private:
   #endif
 
     void bremove(int yblock, int zblock) {
-        char filename[1024];
-        int n = snprintf(filename, 1024, "%s/zeldovich.%1d.%1d",TMPDIR,yblock,zblock);
-        assert(n < 1024);
+        char filename[1100];
+        sprintf(filename, "%s/zeldovich.%1d/zeldovich.%1d.%1d",TMPDIR,yblock,yblock,zblock);
         remove(filename);
     }
 
