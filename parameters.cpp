@@ -16,7 +16,7 @@ public:
     double fundamental; // 2*PI/boxsize
     double nyquist;    // PI/separation
     double k_cutoff; // the wavenumber above which to not input any power, expressed such that k_max = k_nyquist/k_cutoff.  2 = half nyquist, etc.
-    int qdensity;    // If non-zero, output the density
+    int qdensity;    // If 1, output the density. If 2, output *just* the density (no displacements)
     int qascii;        // If non-zero, output in ASCII
     int qoneslab;    // If >=0, only output this z slab.
     int seed;    // Random number seed

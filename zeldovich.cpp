@@ -282,6 +282,7 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
     double ifundamental = 1.0/param.fundamental; // store the inverse
     double fundamental2 = param.fundamental*param.fundamental; // store the square
     double ik_cutoff = 1.0/param.k_cutoff;   // store the inverse
+    int just_density = param.qdensity == 2;  // Don't generate displacements
 
     double target_f = (sqrt(1. + 24*param.f_cluster) - 1)/4.;
     double a_NL, a0;
@@ -384,29 +385,34 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
                 f = 0.;
             }
             
-            // fprintf(stderr,"%d %d %d   %d %d %d   %f   %f %f\n",
-            // x,y,z, kx,ky,kz, k2, real(D), imag(D));
-            // H = F = D = 0.0;   // Test that the Hermitian aspects work
-            // Now A = D+iF and B = G+iH.  
-            // A is in array 0; B is in array 1
-            AYZX(slab,0,yres,z,x) = D+I*F;
-            AYZX(slab,1,yres,z,x) = G+I*H;
-            if(param.qPLT){
-                AYZX(slab,2,yres,z,x) = Complx(0,0) + I*F*f;
-                AYZX(slab,3,yres,z,x) = G*f + I*H*f;
-            }
-            // And we need to store the complex conjugate
-            // in the reflected entry.  We are reflecting
-            // each element.  Note that we are storing one element
-            // displaced in y; we will need to fix this when loading
-            // for the y transform.  For now, we want the two block
-            // boundaries to match.  This means that the conjugates 
-            // for y=0 are being saved, which will be used below.
-            AYZX(slabHer,0,yresHer,zHer,xHer) = conj(D)+I*conj(F);
-            AYZX(slabHer,1,yresHer,zHer,xHer) = conj(G)+I*conj(H);
-            if(param.qPLT){
-                AYZX(slabHer,2,yresHer,zHer,xHer) = 0. + I*conj(F*f);
-                AYZX(slabHer,3,yresHer,zHer,xHer) = conj(G*f) + I*conj(H*f);
+            if(!just_density){
+                // fprintf(stderr,"%d %d %d   %d %d %d   %f   %f %f\n",
+                // x,y,z, kx,ky,kz, k2, real(D), imag(D));
+                // H = F = D = 0.0;   // Test that the Hermitian aspects work
+                // Now A = D+iF and B = G+iH.  
+                // A is in array 0; B is in array 1
+                AYZX(slab,0,yres,z,x) = D+I*F;
+                AYZX(slab,1,yres,z,x) = G+I*H;
+                if(param.qPLT){
+                    AYZX(slab,2,yres,z,x) = Complx(0,0) + I*F*f;
+                    AYZX(slab,3,yres,z,x) = G*f + I*H*f;
+                }
+                // And we need to store the complex conjugate
+                // in the reflected entry.  We are reflecting
+                // each element.  Note that we are storing one element
+                // displaced in y; we will need to fix this when loading
+                // for the y transform.  For now, we want the two block
+                // boundaries to match.  This means that the conjugates 
+                // for y=0 are being saved, which will be used below.
+                AYZX(slabHer,0,yresHer,zHer,xHer) = conj(D)+I*conj(F);
+                AYZX(slabHer,1,yresHer,zHer,xHer) = conj(G)+I*conj(H);
+                if(param.qPLT){
+                    AYZX(slabHer,2,yresHer,zHer,xHer) = 0. + I*conj(F*f);
+                    AYZX(slabHer,3,yresHer,zHer,xHer) = conj(G*f) + I*conj(H*f);
+                }
+            } else {
+                AYZX(slab,0,yres,z,x) = D;
+                AYZX(slabHer,0,yresHer,zHer,xHer) = conj(D);
             }
         }
     } // End the x-z loops
@@ -649,7 +655,13 @@ int main(int argc, char *argv[]) {
 
     //param.print(stdout);   // Inform the command line user
     // Two arrays for dens,x,y,z, two more for vx,vy,vz
-    int narray = param.qPLT ? 4 : 2;
+    int narray;
+    if(param.qdensity == 2){
+        narray = 1;
+    } else {
+        narray = param.qPLT ? 4 : 2;
+    }   
+        
     memory = CUBE(param.ppd/1024.0)*narray*sizeof(Complx);
 
 #ifndef NOPART1
@@ -714,8 +726,10 @@ double _outbufferGiB = 0;
     fprintf(stderr,"This could be compared to the P(k) prediction of %f\n",
     Pk.sigmaR(param.separation/4.0)*pow(param.boxsize,1.5));
     
-    fprintf(stderr,"The maximum component-wise displacements are (%g, %g, %g), same units as BoxSize.\n", max_disp[0], max_disp[1], max_disp[2]);
-    fprintf(stderr,"For Abacus' 2LPT implementation to work (assuming FINISH_WAIT_RADIUS = 1),\n\tthis implies a maximum CPD of %d\n", (int) (param.boxsize/(2*max_disp[2])));  // The slab direction is z in this code
+    if(param.qdensity != 2){
+        fprintf(stderr,"The maximum component-wise displacements are (%g, %g, %g), same units as BoxSize.\n", max_disp[0], max_disp[1], max_disp[2]);
+        fprintf(stderr,"For Abacus' 2LPT implementation to work (assuming FINISH_WAIT_RADIUS = 1),\n\tthis implies a maximum CPD of %d\n", (int) (param.boxsize/(2*max_disp[2])));  // The slab direction is z in this code
+    }
     // fclose(output);
     totaltime.Stop();
     fprintf(stderr,"Time so far: %f seconds\n", totaltime.Elapsed());

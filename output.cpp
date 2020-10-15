@@ -52,10 +52,11 @@ BlockArray& array, Parameters& param) {
     STimer thisouttimer;
     thisouttimer.Start();
     double thisdensity_variance=0.0;
+    int just_density = param.qdensity == 2;  // no displacements
 
     // Write out one slab of particles
     int x,y;
-    double pos[4], vel[3];
+    double pos[3], vel[3], dens;
     double norm, densitynorm, vnorm;
     // We also need to fix the normalizations, which come from many places:
     // 1) We used ik/k^2 to apply the velocities.
@@ -81,88 +82,93 @@ BlockArray& array, Parameters& param) {
     //norm = 1e-2;
 
     int64_t i = 0;
-    for (y=0;y<array.ppd;y++)
-    for (x=0;x<array.ppd;x++) {
-        // The displacements are in YX(slab,y,x) and the
-        // base positions are in z,y,x
-        //       pos[0] = x*param.separation+imag(YX(slab1,y,x))*norm;
-        //       pos[1] = y*param.separation+real(YX(slab2,y,x))*norm;
-        //       pos[2] = z*param.separation+imag(YX(slab2,y,x))*norm;
-        pos[0] = imag(YX(slab1,y,x))*norm;
-        pos[1] = real(YX(slab2,y,x))*norm;
-        pos[2] = imag(YX(slab2,y,x))*norm;
-        pos[3] = real(YX(slab1,y,x))*densitynorm;
-        if(param.qPLT){
-            vel[0] = imag(YX(slab3,y,x))*vnorm;
-            vel[1] = real(YX(slab4,y,x))*vnorm;
-            vel[2] = imag(YX(slab4,y,x))*vnorm;
-        } else {
-            vel[0] = imag(YX(slab1,y,x))*vnorm;
-            vel[1] = real(YX(slab2,y,x))*vnorm;
-            vel[2] = imag(YX(slab2,y,x))*vnorm;
-            //vel[0] = 0; vel[1] = 0;vel[2] = 0;
-        }
-        //            WRAP(pos[0]);
-        //            WRAP(pos[1]);
-        //            WRAP(pos[2]);
-        if (param.qascii) {
-            fprintf(output,"%d %d %d %f %f %f %f %f %f %f\n",x,y,z,pos[0],pos[1],pos[2],pos[3], vel[0], vel[1], vel[2]);
-        } else {
-            switch(param_icformat){
-                case OUTPUT_RVDOUBLEZEL: {
-                    RVdoubleZelParticle out;
-                    out.i = z; out.j =y; out.k = x;
-                    out.displ[0] = pos[2]; out.displ[1] = pos[1]; out.displ[2] = pos[0];
-                    out.vel[0] = vel[2]; out.vel[1] = vel[1]; out.vel[2] = vel[0];
-                    ((RVdoubleZelParticle *) output_tmp)[i] = out;
-                    break;
+    for (y=0;y<array.ppd;y++) {
+        for (x=0;x<array.ppd;x++) {
+            // The displacements are in YX(slab,y,x) and the
+            // base positions are in z,y,x
+            //       pos[0] = x*param.separation+imag(YX(slab1,y,x))*norm;
+            //       pos[1] = y*param.separation+real(YX(slab2,y,x))*norm;
+            //       pos[2] = z*param.separation+imag(YX(slab2,y,x))*norm;
+            dens = real(YX(slab1,y,x))*densitynorm;
+            if(!just_density){
+                pos[0] = imag(YX(slab1,y,x))*norm;
+                pos[1] = real(YX(slab2,y,x))*norm;
+                pos[2] = imag(YX(slab2,y,x))*norm;
+                if(param.qPLT){
+                    vel[0] = imag(YX(slab3,y,x))*vnorm;
+                    vel[1] = real(YX(slab4,y,x))*vnorm;
+                    vel[2] = imag(YX(slab4,y,x))*vnorm;
+                } else {
+                    vel[0] = imag(YX(slab1,y,x))*vnorm;
+                    vel[1] = real(YX(slab2,y,x))*vnorm;
+                    vel[2] = imag(YX(slab2,y,x))*vnorm;
+                    //vel[0] = 0; vel[1] = 0;vel[2] = 0;
+                }
+                //            WRAP(pos[0]);
+                //            WRAP(pos[1]);
+                //            WRAP(pos[2]);
+                if (param.qascii) {
+                    fprintf(output,"%d %d %d %f %f %f %f %f %f %f\n",x,y,z,pos[0],pos[1],pos[2], dens, vel[0], vel[1], vel[2]);
+                } else {
+                    switch(param_icformat){
+                        case OUTPUT_RVDOUBLEZEL: {
+                            RVdoubleZelParticle out;
+                            out.i = z; out.j =y; out.k = x;
+                            out.displ[0] = pos[2]; out.displ[1] = pos[1]; out.displ[2] = pos[0];
+                            out.vel[0] = vel[2]; out.vel[1] = vel[1]; out.vel[2] = vel[0];
+                            ((RVdoubleZelParticle *) output_tmp)[i] = out;
+                            break;
+                        }
+
+                        case OUTPUT_RVZEL: {
+                            RVZelParticle out;
+                            out.i = z; out.j =y; out.k = x;
+                            out.displ[0] = pos[2]; out.displ[1] = pos[1]; out.displ[2] = pos[0];
+                            out.vel[0] = vel[2]; out.vel[1] = vel[1]; out.vel[2] = vel[0];
+                            ((RVZelParticle *) output_tmp)[i] = out;
+                            break;
+                        }
+
+                        case OUTPUT_ZEL: {
+                            ZelParticle out;
+                            out.i = z; out.j =y; out.k = x;
+                            out.displ[0] = pos[2]; out.displ[1] = pos[1]; out.displ[2] = pos[0];
+                            ((ZelParticle *) output_tmp)[i] = out;
+                            break;
+                        }
+
+                        default:
+                            fprintf(stderr, "Error: unknown ICFormat \"%s\". Aborting.\n", param.ICFormat);
+                            exit(1);
+                    }
                 }
 
-                case OUTPUT_RVZEL: {
-                    RVZelParticle out;
-                    out.i = z; out.j =y; out.k = x;
-                    out.displ[0] = pos[2]; out.displ[1] = pos[1]; out.displ[2] = pos[0];
-                    out.vel[0] = vel[2]; out.vel[1] = vel[1]; out.vel[2] = vel[0];
-                    ((RVZelParticle *) output_tmp)[i] = out;
-                    break;
+                // Track the global max displacement
+                for(int j = 0; j < 3; j++){
+                    max_disp[j] = pos[j] > max_disp[j] ? pos[j] : max_disp[j];
                 }
-
-                case OUTPUT_ZEL: {
-                    ZelParticle out;
-                    out.i = z; out.j =y; out.k = x;
-                    out.displ[0] = pos[2]; out.displ[1] = pos[1]; out.displ[2] = pos[0];
-                    ((ZelParticle *) output_tmp)[i] = out;
-                    break;
-                }
-
-                default:
-                    fprintf(stderr, "Error: unknown ICFormat \"%s\". Aborting.\n", param.ICFormat);
-                    exit(1);
             }
-
+            
             if(param.qdensity)
-                densoutput_tmp[i] = pos[3];  // casts to float
-        }
-        thisdensity_variance += pos[3]*pos[3];
-        
-        // Track the global max displacement
-        for(int j = 0; j < 3; j++){
-            max_disp[j] = pos[j] > max_disp[j] ? pos[j] : max_disp[j];
-        }
+                densoutput_tmp[i] = dens;  // casts to float
+            thisdensity_variance += dens*dens;
 
-        // cic->add_cic(param.boxsize,pos);
+            // cic->add_cic(param.boxsize,pos);
 
-        i++;
+            i++;
+        }
     }
 
     assert(i == param.ppd*param.ppd);
 
-    char fn[1080];
-    sprintf(fn, "%s/ic_%ld",param.output_dir,z*param.cpd/param.ppd);
-    //fprintf(stderr,"z: %d goes goes to ic_%d /n", z, z*param.cpd/param.ppd);
-    output = fopen(fn,"ab");
-    fwrite(output_tmp, sizeof_outputtype, param.ppd*param.ppd, output);
-    fclose(output);
+    if(!just_density){
+        char fn[1080];
+        sprintf(fn, "%s/ic_%ld",param.output_dir,z*param.cpd/param.ppd);
+        //fprintf(stderr,"z: %d goes goes to ic_%d /n", z, z*param.cpd/param.ppd);
+        output = fopen(fn,"ab");
+        fwrite(output_tmp, sizeof_outputtype, param.ppd*param.ppd, output);
+        fclose(output);
+    }
     int64_t totsize = array.ppd*array.ppd*sizeof_outputtype;
 
     // Append to the density file
@@ -192,22 +198,26 @@ void SetupOutputDir(Parameters &param){
 
 // Returns GiB size of allocated buffer
 double InitOutputBuffers(Parameters &param){
-    if(strcmp(param.ICFormat, "RVdoubleZel") == 0){
-        param_icformat = OUTPUT_RVDOUBLEZEL;
-        output_tmp = new RVdoubleZelParticle[param.ppd*param.ppd];
-        sizeof_outputtype = sizeof(RVdoubleZelParticle);
-    } else if (strcmp(param.ICFormat, "RVZel") == 0){
-        param_icformat = OUTPUT_RVZEL;
-        output_tmp = new RVZelParticle[param.ppd*param.ppd];
-        sizeof_outputtype = sizeof(RVZelParticle);
-    } else if (strcmp(param.ICFormat, "Zeldovich") == 0){
-        param_icformat = OUTPUT_ZEL;
-        output_tmp = new ZelParticle[param.ppd*param.ppd];
-        sizeof_outputtype = sizeof(ZelParticle);
-    }
-    else {
-        fprintf(stderr, "Error: unknown ICFormat \"%s\". Aborting.\n", param.ICFormat);
-        exit(1);
+    if(param.qdensity != 2){
+        if(strcmp(param.ICFormat, "RVdoubleZel") == 0){
+            param_icformat = OUTPUT_RVDOUBLEZEL;
+            output_tmp = new RVdoubleZelParticle[param.ppd*param.ppd];
+            sizeof_outputtype = sizeof(RVdoubleZelParticle);
+        } else if (strcmp(param.ICFormat, "RVZel") == 0){
+            param_icformat = OUTPUT_RVZEL;
+            output_tmp = new RVZelParticle[param.ppd*param.ppd];
+            sizeof_outputtype = sizeof(RVZelParticle);
+        } else if (strcmp(param.ICFormat, "Zeldovich") == 0){
+            param_icformat = OUTPUT_ZEL;
+            output_tmp = new ZelParticle[param.ppd*param.ppd];
+            sizeof_outputtype = sizeof(ZelParticle);
+        }
+        else {
+            fprintf(stderr, "Error: unknown ICFormat \"%s\". Aborting.\n", param.ICFormat);
+            exit(1);
+        }
+    } else {
+        output_tmp = NULL;
     }
 
     if(param.qdensity){
@@ -224,18 +234,20 @@ double InitOutputBuffers(Parameters &param){
 }
 
 void TeardownOutput(){
-    switch(param_icformat){
-        case OUTPUT_RVDOUBLEZEL:
-            delete[] (RVdoubleZelParticle *) output_tmp;
-            break;
+    if(output_tmp != NULL){
+        switch(param_icformat){
+            case OUTPUT_RVDOUBLEZEL:
+                delete[] (RVdoubleZelParticle *) output_tmp;
+                break;
 
-        case OUTPUT_RVZEL:
-            delete[] (RVZelParticle *) output_tmp;
-            break;
+            case OUTPUT_RVZEL:
+                delete[] (RVZelParticle *) output_tmp;
+                break;
 
-        case OUTPUT_ZEL:
-            delete[] (ZelParticle *) output_tmp;
-            break;
+            case OUTPUT_ZEL:
+                delete[] (ZelParticle *) output_tmp;
+                break;
+        }
     }
 
     if(densoutput_tmp != NULL){
