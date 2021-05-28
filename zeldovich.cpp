@@ -463,14 +463,13 @@ void ZeldovichZ(BlockArray& array, Parameters& param, PowerSpectrum& Pk) {
     // Do Z direction inverse FFTs.
     // Pack the result into 'array'.
     Complx *slab, *slabHer;
-    int yblock,zblock;
     int64_t len = (int64_t)array.block*array.ppd*array.ppd*array.narray;
     slab    = new Complx[len];
     slabHer = new Complx[len];
     STimer compute_planes, storing;
     //
     fprintf(stderr,"Looping over Y: ");
-    for (yblock=0;yblock<array.numblock/2;yblock++) {
+    for (int yblock=0;yblock<array.numblock/2;yblock++) {
         // We're going to do each pair of Y slabs separately.
         // Load the deltas and do the FFTs for each pair of planes
         fprintf(stderr,".."); fflush(stderr);
@@ -485,7 +484,7 @@ void ZeldovichZ(BlockArray& array, Parameters& param, PowerSpectrum& Pk) {
         // Can't openMP an I/O loop.
         storing.Start();
         #pragma omp parallel for schedule(dynamic,1)
-        for (zblock=0;zblock<array.numblock;zblock++) {
+        for (int zblock=0;zblock<array.numblock;zblock++) {
             array.StoreBlock(yblock,zblock,slab);
             array.StoreBlock(array.numblock-1-yblock,zblock,slabHer);
         }
@@ -512,19 +511,17 @@ void ZeldovichXY(BlockArray& array, Parameters& param, FILE *output) {
     Complx *slab;
     int64_t len = (int64_t)array.block*array.ppd*array.ppd*array.narray;
     slab = new Complx[len];
-    unsigned int a;
-    int x,yblock,y,zblock;
     fprintf(stderr,"Looping over Z: ");
     STimer loading, writing, fft;
 
-    for (zblock=0;zblock<array.numblock;zblock++) {
+    for (int zblock=0;zblock<array.numblock;zblock++) {
         // We'll do one Z slab at a time
         // Load the slab back in.  
         // Can't openMP an I/O loop.
         loading.Start();
         fprintf(stderr,".");
         #pragma omp parallel for schedule(dynamic,1)
-        for (yblock=0;yblock<array.numblock;yblock++) {
+        for (int yblock=0;yblock<array.numblock;yblock++) {
             array.LoadBlock(yblock, zblock, slab);
         } 
         loading.Stop();
@@ -533,16 +530,16 @@ void ZeldovichXY(BlockArray& array, Parameters& param, FILE *output) {
         // because we shifted the data by one location.
         // FLAW: this assumes PPD is even.
         fft.Start();
-        y = array.ppd/2;
+        int y = array.ppd/2;
         #pragma omp parallel for schedule(static)
         for (int zres=0;zres<array.block;zres++) {
-            for (a=0;a<array.narray;a++) {
-                for (x=0;x<array.ppd;x++) AZYX(slab,a,zres,y,x) = 0.0;
+            for (int a=0;a<array.narray;a++) {
+                for (int x=0;x<array.ppd;x++) AZYX(slab,a,zres,y,x) = 0.0;
             }
         }
 
         // Now we want to do the Y & X inverse FFT.
-        for (a=0;a<array.narray;a++) {
+        for (int a=0;a<array.narray;a++) {
             #pragma omp parallel for schedule(dynamic,1)
             for (int zres=0;zres<array.block;zres++) {
                 Inverse2dFFT(&(AZYX(slab,a,zres,0,0)),array.ppd);
