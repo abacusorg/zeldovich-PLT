@@ -29,6 +29,10 @@ public:
     unsigned short i,j,k;
     double displ[3];
 };
+class ZelSimpleParticle {
+public:
+    float displ[3];
+};
 class RVZelParticle {
 public:
     unsigned short i,j,k;
@@ -42,7 +46,7 @@ public:
     double vel[3];
 };
 
-enum OutputType {OUTPUT_ZEL, OUTPUT_RVZEL, OUTPUT_RVDOUBLEZEL};
+enum OutputType {OUTPUT_ZEL, OUTPUT_RVZEL, OUTPUT_RVDOUBLEZEL, OUTPUT_ZEL_SIMPLE};
 OutputType param_icformat;
 size_t sizeof_outputtype;
 
@@ -136,6 +140,13 @@ BlockArray& array, Parameters& param) {
                             ((ZelParticle *) output_tmp)[i] = out;
                             break;
                         }
+                        
+                        case OUTPUT_ZEL_SIMPLE: {
+                            ZelSimpleParticle out;
+                            out.displ[0] = pos[2]; out.displ[1] = pos[1]; out.displ[2] = pos[0];
+                            ((ZelSimpleParticle *) output_tmp)[i] = out;
+                            break;
+                        }
 
                         default:
                             fprintf(stderr, "Error: unknown ICFormat \"%s\". Aborting.\n", param.ICFormat);
@@ -211,6 +222,10 @@ double InitOutputBuffers(Parameters &param){
             param_icformat = OUTPUT_ZEL;
             output_tmp = new ZelParticle[param.ppd*param.ppd];
             sizeof_outputtype = sizeof(ZelParticle);
+        } else if (strcmp(param.ICFormat, "ZelSimple") == 0){
+            param_icformat = OUTPUT_ZEL_SIMPLE;
+            output_tmp = new ZelSimpleParticle[param.ppd*param.ppd];
+            sizeof_outputtype = sizeof(ZelSimpleParticle);
         }
         else {
             fprintf(stderr, "Error: unknown ICFormat \"%s\". Aborting.\n", param.ICFormat);
@@ -246,6 +261,10 @@ void TeardownOutput(){
 
             case OUTPUT_ZEL:
                 delete[] (ZelParticle *) output_tmp;
+                break;
+                
+            case OUTPUT_ZEL_SIMPLE:
+                delete[] (ZelSimpleParticle *) output_tmp;
                 break;
         }
     }
