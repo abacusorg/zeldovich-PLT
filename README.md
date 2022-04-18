@@ -334,6 +334,9 @@ The wavenumber above which not to generate any power, expressed such that `k_max
 
 If `ZD_Version=1`, then to keep the random number generation synchronized between the two boxes (fixed number of particle planes per block), `ZD_NumBlock` is increased by a factor of `ZD_k_cutoff`.  So do not change `ZD_NumBlock` between invocations in version 1!  Version 2 does not suffer from this limitation.
 
+`ZD_qdensity`: *integer*
+Set to 1 to output the density field in addition to the displacements.  Set to 2 to output just density, and not displacements (this saves memory).
+
 `BoxSize`: *double*  
 This is the box size, probably in Mpc or h<sup>-1</sup>Mpc.  The zeldovich code only cares about the units to the extent that they should match the units in the power spectrum file.  See `ZD_Pk_scale` for further discussion.
 
