@@ -4,12 +4,10 @@
 #include <cassert>
 #include <time.h>
 
-// We sometimes make arrays of STimers.  Let's avoid false sharing!
-#ifndef CACHE_LINE_SIZE
-#define CACHE_LINE_SIZE 128
-#endif
+// N.B. STimer has no cache line padding.
+// Use PTimer instead in parallel contexts.
 
-class alignas(CACHE_LINE_SIZE) STimer {
+class STimer {
 public:
     STimer();
     ~STimer();
@@ -19,8 +17,8 @@ public:
     void Clear(void);
     void increment(struct timespec dt);
     struct timespec get_timer(void);
-    int timeron;
 
+    int timeron;
     struct timespec timer;
     
 private:
