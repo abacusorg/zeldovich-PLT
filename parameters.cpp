@@ -43,7 +43,7 @@ public:
     
     char ICFormat[1024]; // Abacus's expected input format (i.e. our output format)
     
-    int ramdisk; // If -DDIRECTIO, need to know if we're on a ramdisk
+    int AllowDirectIO; // If -DDIRECTIO, need to know if we're on a AllowDirectIO
 
     // Version of the algorithm for getting modes from RNG
     // This directly impacts the phases you get out.
@@ -86,7 +86,7 @@ public:
         PLT_target_z = 0.; // Legal default, probably don't want!
         k_cutoff = 1.; // Legal default (corresponds to k_nyquist)
         strcpy(ICFormat,""); // Illegal default
-        ramdisk = 0;  // Legal default for most cases
+        AllowDirectIO = 0;  // Legal default for most cases
         version = -1;  // All new ICs should use verison 2 (default), but version 1 is available for backwards compatibility
         
         // Read the paramater file values
@@ -142,7 +142,7 @@ public:
         installscalar("ZD_PLT_target_z",PLT_target_z,DONT_CARE);
         installscalar("ZD_k_cutoff",k_cutoff,DONT_CARE);
         installscalar("ICFormat",ICFormat,MUST_DEFINE);
-        installscalar("RamDisk",ramdisk,DONT_CARE);
+        installscalar("AllowDirectIO",AllowDirectIO,DONT_CARE);
         installscalar("ZD_Version",version,DONT_CARE);
     }
 

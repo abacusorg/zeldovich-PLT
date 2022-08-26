@@ -693,7 +693,7 @@ double _outbufferGiB = 0;
     }
 
     int quickdelete = 1;
-    BlockArray array(param.ppd,param.numblock,narray,param.output_dir,param.ramdisk, quickdelete, PART);
+    BlockArray array(param.ppd,param.numblock,narray,param.output_dir,param.AllowDirectIO, quickdelete, PART);
 
     totaltime.Stop();
     fprintf(stderr,"Preamble took %f seconds\n", totaltime.Elapsed());
