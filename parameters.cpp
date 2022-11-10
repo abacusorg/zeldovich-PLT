@@ -52,6 +52,8 @@ public:
     // on ZD_NumBlock)
     int version;
 
+    int CornerModes;  // fill modes k > k_Ny. Default: 0.
+
     int setup();
     // Check against the defaults; complain if something is missing.
     // Setup the other variables
@@ -88,6 +90,7 @@ public:
         strcpy(ICFormat,""); // Illegal default
         AllowDirectIO = 0;  // Legal default for most cases
         version = -1;  // All new ICs should use verison 2 (default), but version 1 is available for backwards compatibility
+        CornerModes = 0;  // Legal default (no corner modes)
         
         // Read the paramater file values
         register_vars();
@@ -144,6 +147,7 @@ public:
         installscalar("ICFormat",ICFormat,MUST_DEFINE);
         installscalar("AllowDirectIO",AllowDirectIO,DONT_CARE);
         installscalar("ZD_Version",version,DONT_CARE);
+        installscalar("ZD_CornerModes",CornerModes,DONT_CARE);
     }
 
 

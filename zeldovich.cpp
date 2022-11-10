@@ -325,7 +325,7 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
             int kmax = (double)ppdhalf*ik_cutoff+.5;
             if ( (abs(kx)==kmax || abs(kz)==kmax || abs(ky)==kmax)
                     // Force all elements with wavenumber above k_cutoff (nominally k_Nyquist) to zero
-                    || (k2>=k2_cutoff)
+                    || (!param.CornerModes && k2>=k2_cutoff)
                     // Pick out one mode
                     || (param.qonemode && !(kx==param.one_mode[0] && ky==param.one_mode[1] && kz==param.one_mode[2])) ) {
                 D=0.0;
