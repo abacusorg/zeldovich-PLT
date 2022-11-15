@@ -74,10 +74,10 @@ public:
 #else
         //arr = new Complx[size];  // careful about hidden single-threaded zero-init!
         
-        int ret = posix_memalign((void *) &arr, 4096, sizeof(Complx)*size);
+        int ret = posix_memalign((void **) &arr, 4096, sizeof(Complx)*size);
         assert(ret == 0);
         #pragma omp parallel for schedule(static)
-        for(int64_t i = 0; i < size; i++){
+        for(uint64_t i = 0; i < size; i++){
             arr[i] = Complx(0.,0.);
         }
 #endif
@@ -126,7 +126,7 @@ public:
         serial_time, bytes_read/1e9, bytes_read/1e6/serial_time);
 
 #else
-        delete []arr;
+        free(arr);
 #endif
     }
 
