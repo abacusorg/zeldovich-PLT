@@ -325,7 +325,7 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
             int kmax = (double)ppdhalf*ik_cutoff+.5;
             if ( (abs(kx)==kmax || abs(kz)==kmax || abs(ky)==kmax)
                     // Force all elements with wavenumber above k_cutoff (nominally k_Nyquist) to zero
-                    || (k2>=k2_cutoff)
+                    || (!param.CornerModes && k2>=k2_cutoff)
                     // Pick out one mode
                     || (param.qonemode && !(kx==param.one_mode[0] && ky==param.one_mode[1] && kz==param.one_mode[2])) ) {
                 D=0.0;
@@ -464,8 +464,20 @@ void ZeldovichZ(BlockArray& array, Parameters& param, PowerSpectrum& Pk) {
     // Pack the result into 'array'.
     Complx *slab, *slabHer;
     int64_t len = (int64_t)array.block*array.ppd*array.ppd*array.narray;
-    slab    = new Complx[len];
-    slabHer = new Complx[len];
+    
+    //slab    = new Complx[len];  // avoid hidden single-threaded zeroing
+    //slabHer = new Complx[len];
+
+    int ret = posix_memalign((void **) &slab, 4096, sizeof(Complx)*len);
+    assert(ret == 0);
+    ret = posix_memalign((void **) &slabHer, 4096, sizeof(Complx)*len);
+    assert(ret == 0);
+    #pragma omp parallel for schedule(static)
+    for(int64_t i = 0; i < len; i++){
+        slab[i] = Complx(0.,0.);
+        slabHer[i] = Complx(0.,0.);
+    }
+
     STimer compute_planes, storing;
     //
     fprintf(stderr,"Looping over Y: ");
@@ -490,8 +502,8 @@ void ZeldovichZ(BlockArray& array, Parameters& param, PowerSpectrum& Pk) {
         }
         storing.Stop();
     }  // End yblock for loop
-    delete[] slabHer;
-    delete[] slab;
+    free(slabHer);
+    free(slab);
     fprintf(stderr,"\n");
     fprintf(stderr,"Computing, Saving the Planes took %f %f sec\n", compute_planes.Elapsed(), storing.Elapsed());
     return;
@@ -510,7 +522,15 @@ void ZeldovichXY(BlockArray& array, Parameters& param, FILE *output) {
     
     Complx *slab;
     int64_t len = (int64_t)array.block*array.ppd*array.ppd*array.narray;
-    slab = new Complx[len];
+    //slab = new Complx[len];
+
+    int ret = posix_memalign((void **) &slab, 4096, sizeof(Complx)*len);
+    assert(ret == 0);
+    #pragma omp parallel for schedule(static)
+    for(int64_t i = 0; i < len; i++){
+        slab[i] = Complx(0.,0.);
+    }
+
     fprintf(stderr,"Looping over Z: ");
     STimer loading, writing, fft;
 
@@ -564,7 +584,7 @@ void ZeldovichXY(BlockArray& array, Parameters& param, FILE *output) {
         }
         writing.Stop();
     } // End zblock for loop
-    delete[] slab;
+    free(slab);
     fprintf(stderr,"\n");
     fprintf(stderr,"Loading, FFTs, Writing took %f %f %f seconds\n", loading.Elapsed(), fft.Elapsed(), writing.Elapsed());
     return;
