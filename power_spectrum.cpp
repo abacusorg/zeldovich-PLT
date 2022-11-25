@@ -4,7 +4,7 @@ class PowerSpectrum:public SplineFunction {
 public:
     PowerSpectrum(int n): SplineFunction(n) {
         is_powerlaw = 0;
-        powerlaw_index = NAN;
+        powerlaw_index = 1000;
     };
     int fixed_power;
     int is_powerlaw;
@@ -117,7 +117,7 @@ public:
     }
 
     int InitFromPowerLaw(double _powerlaw_index, Parameters& param){
-        assert(!std::isnan(_powerlaw_index));
+        assert(_powerlaw_index != 1000);
         powerlaw_index = _powerlaw_index;
         is_powerlaw = 1;
         fprintf(stderr,"Initializing power spectrum with power law index %g\n", powerlaw_index);

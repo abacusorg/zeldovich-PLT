@@ -76,7 +76,7 @@ public:
         qPk_fix_to_mean = 0; // Legal default
         seed = 0;    // Legal default
         strcpy(Pk_filename,"");   // Must specify Pk file or power law
-        Pk_powerlaw_index = NAN;  // Must specify Pk file or power law
+        Pk_powerlaw_index = 1000;  // Must specify Pk file or power law
         strcpy(density_filename,"density%d");  // Legal default
         qonemode = 0; // Legal default
         memset(one_mode, 0, 3*sizeof(int)); // Legal default
@@ -205,8 +205,8 @@ int Parameters::setup() {
     assert(f_cluster > 0. && f_cluster <= 1.);  // Anything outside this range is probably a bug
 
     // Must specify exactly one of Pk file or power law index
-    assert( (bool)(strlen(Pk_filename) > 0) != (bool) !std::isnan(Pk_powerlaw_index) );
-    if(!std::isnan(Pk_powerlaw_index))
+    assert( (bool)(strlen(Pk_filename) > 0) != (bool) (Pk_powerlaw_index != 1000) );
+    if(Pk_powerlaw_index != 1000)
         assert(Pk_powerlaw_index <= 0);  // technically the code supports blue spectra, but it's more likely input error!
     if(qPLT) assert(! (strlen(PLT_filename)==0) );
     assert(k_cutoff >= 1);
