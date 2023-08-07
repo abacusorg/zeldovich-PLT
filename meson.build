@@ -4,9 +4,13 @@ project('zeldovich-PLT',
         )
 add_global_arguments('-march=native', language : 'cpp')
 
+disk = get_option('DISK')
+if disk
+  add_project_arguments(['-DDISK'], language: 'cpp')
+endif
+
 ph_proj = subproject('ParseHeader')
 libparseheader_dep = ph_proj.get_variable('libparseheader_dep')
-
 
 src = [
     'src/block_array.cpp',
