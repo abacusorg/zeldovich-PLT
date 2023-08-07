@@ -2,11 +2,11 @@ zeldovich
 zeldovich_part1
 zeldovich_part2
 rng_test
-ParseHeader
-!ParseHeader/
 *.o
 *.a
 *.d
 *.par
 FREEZE
 fftw_zeldovich.wisdom
+build/
+.vscode/

@@ -1,3 +1,8 @@
+#pragma once
+
+#include <cstring>
+#include <iostream>
+
 // This is a class to provide a standard interface for loading 
 // parameter files and writing headers.
 
