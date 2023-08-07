@@ -29,7 +29,17 @@ The code uses double precision internally, but you can set output format to sing
 The code can run small problems in memory, but it has an efficient scheme for buffering state on disk to support massive problems (100s of billions of particles). Set the `-DDISK` option in the Makefile to turn this on.
 
 ## Usage
-Build with `make`, and run with `./zeldovich <param_file>`.  An example parameter file (`example.par`) is provided, and all of the options are detailed in the "Parameter file options" section below.
+`zeldovich-PLT` uses the [Meson](https://mesonbuild.com/) build system. Meson has a two-step build process, a lot like CMake. You setup a build directory, and then compile in that build directory:
+```console
+$ meson setup build
+$ meson compile -C build  # equivalent to "cd build; meson compile"
+```
+
+The zeldovich executable will be written to `build/zeldovich` (you can run `meson install` if you want to, but usually it's fine to run out of the build directory).
+
+Run with `./build/zeldovich <param_file>`.  An example parameter file (`example.par`) is provided, and all of the options are detailed in the "Parameter file options" section below.
+
+Meson itself can be obtained via pip. You probably want ninja too: `pip install meson ninja`.
 
 ### Dependencies
 zeldovich-PLT is a C++11 code.  It requires FFTW 3 and GSL, and the ParseHeader library needs flex and Bison >= 3.0.  The code has been tested with the GNU and Intel C++ compilers.
