@@ -1,5 +1,4 @@
-#ifndef STIMER
-#define STIMER
+#pragma once
 
 #include <cassert>
 #include <time.h>
@@ -29,4 +28,3 @@ struct timespec scale_timer(double s, struct timespec t);
 void timespecclear(struct timespec *t);
 void timespecadd(struct timespec *a, struct timespec *b, struct timespec *res);
 void timespecsub(struct timespec *a, struct timespec *b, struct timespec *res);
-#endif

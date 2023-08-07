@@ -11,8 +11,8 @@ using std::string;
 using std::endl;
 
 phDriver::phDriver (int _Warnings, int _No_Undefined) 
-    : trace_scanning (false), trace_parsing (false), Debug(false),
-      Warnings(_Warnings), no_undefined(_No_Undefined) {
+    : Warnings(_Warnings), no_undefined(_No_Undefined),
+      trace_parsing (false), trace_scanning (false), Debug(false) {
     InitSymtab();
     ResetParser();
 }
@@ -182,7 +182,7 @@ void phDriver::stuffit(SYMENT **spec, VAL_STACK *list, int len, int varzone,
                        const yy::location& yylloc) {
     int i;
     SYMENT *pf;
-    char tmpstr[6];
+    // char tmpstr[6];
 
     for(i=0; i<len; i++) {
         if(varzone) 
@@ -340,7 +340,7 @@ void phDriver::InitSymtab(void) {
         symtab[i].stride = 0;
         symtab[i].init = (int *) NULL;
         symtab[i].dim = 0;
-        symtab[i].nvals;
+        // symtab[i].nvals;
         symtab[i].mapped = (char *) NULL;
     }
 }
@@ -378,7 +378,7 @@ void phDriver::ResetParser(void) {
 // install a variable in the symbol table and initialize it's entry
 void phDriver::InstallSym(const char *name, void *ptr, int type, int dim, int stride, bool init) {
     SYMENT *sym;
-    int i;
+    // int i;
 
     if(init_symtab==1) InitSymtab();
 

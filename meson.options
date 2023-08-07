@@ -1,0 +1,1 @@
+option('DISK', type : 'boolean', value : false, description : 'Buffer state on disk')

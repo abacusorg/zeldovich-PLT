@@ -1,6 +1,0 @@
-Author: Phil Pinto
-
-Type "make" to make the libparseheader.a library.
-
-To use the code, you will need to link to libparseheader.a and
-set your include path to find parseheader.hh

@@ -26,10 +26,22 @@ This code does not presently support glass initial conditions, only particle lat
 
 The code uses double precision internally, but you can set output format to single or double precision (see the `ICFormat` option).
 
-The code can run small problems in memory, but it has an efficient scheme for buffering state on disk to support massive problems (100s of billions of particles). Set the `-DDISK` option in the Makefile to turn this on.
+The code can run small problems in memory, but it has an efficient scheme for buffering state on disk to support massive problems (100s of billions of particles). Setup the build with `meson setup build -DDISK=true` to turn this on.
 
 ## Usage
-Build with `make`, and run with `./zeldovich <param_file>`.  An example parameter file (`example.par`) is provided, and all of the options are detailed in the "Parameter file options" section below.
+`zeldovich-PLT` uses the [Meson](https://mesonbuild.com/) build system. Meson has a two-step build process, a lot like CMake. You setup a build directory, and then compile in that build directory:
+```console
+$ meson setup build
+$ meson compile -C build  # equivalent to "cd build; meson compile"
+```
+
+The zeldovich executable will be written to `build/zeldovich` (you can run `meson install` if you want to, but usually it's fine to run out of the build directory).
+
+To build in out-of-core mode, use `meson setup build -DDISK=true`. The state will be buffered in the `InitialConditionsDirectory`. This allows one to generate much larger ICs than fit in memory.
+
+Run with `./build/zeldovich <param_file>`.  An example parameter file (`example.par`) is provided, and all of the options are detailed in the "Parameter file options" section below.
+
+Meson itself can be obtained via pip. You probably want ninja too: `pip install meson ninja`.
 
 ### Dependencies
 zeldovich-PLT is a C++11 code.  It requires FFTW 3 and GSL, and the ParseHeader library needs flex and Bison >= 3.0.  The code has been tested with the GNU and Intel C++ compilers.
@@ -228,9 +240,8 @@ will be `ZD_NumBlock*ZD_k_cutoff`. See `ZD_k_cutoff` for details.
 If `ZD_Version=1`, both this variable and `ZD_Seed` affect the output phases.
 This is not the case since version 2.
 
-If the `-DDISK` flag is not set (see Makefile Options below), then
-blocks are stored in memory, not disk.  So `NumBlock` matters less
-in that case.
+If the `-DDISK` flag is not set, then blocks are stored in memory, not disk.
+So `NumBlock` matters less in that case.
 
 `ZD_Version`: *integer*  
 The version of the algorithm for generating modes from random numbers.
@@ -405,12 +416,6 @@ public:
     double displ[3];
 };
 ```
-
-## Makefile options
-The `-DDISK` option in the Makefile is a C-preprocessor flag that enables the `DISK` macro definition.
-The code will buffer blocks on disk in the `InitialConditionsDirectory` instead of in memory if it is enabled.
-This allows one to generate much larger ICs than fit in memory.  Comment or uncomment this option to enable/disable
-it according to your use case.
 
 ## License
 [MIT](LICENSE)

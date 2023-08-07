@@ -21,7 +21,7 @@ public:
 
     std::string name;
     char *buffer;
-    int bufferlength;
+    size_t bufferlength;
     FILE *fp;
 
 private:

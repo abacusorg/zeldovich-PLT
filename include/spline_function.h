@@ -1,3 +1,8 @@
+#pragma once
+
+#include <cassert>
+#include <cstdio>
+
 class SplineFunction {
     // This will be a class to store the points of a spline
     // and return interpolated values

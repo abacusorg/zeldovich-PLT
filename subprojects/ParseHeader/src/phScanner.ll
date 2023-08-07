@@ -1,6 +1,4 @@
 /* -*- C++ -*- */
-%option outfile="phScanner.cc"
-%option header-file="phScanner.hh"
 %{
 # include <cstdlib>
 # include <cerrno>

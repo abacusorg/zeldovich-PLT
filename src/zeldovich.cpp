@@ -1,30 +1,3 @@
-/* v1.0 -- Initial version
-
-v1.1 -- Fixed critical bug in Box-Muller implementation.
-Fixed minor bug in spline_function initialization that was causing 
-crashes under Linux.
-
-v1.2 -- Added feature to output only one XY slab (at a chosen z)
-so as to keep the files smaller for debugging or plotting.
-
-v1.3-- Changed to use ParseHeader to handle input files
-
-v1.4-- Changed output to match input specification for abacus
-
-v1.5-- Changed standard random call to mersene twister from the GSL
-
-v1.6-- Support for "oversampled" simulations (same modes at different PPD) via the k_cutoff option
-
-v1.7-- Support for PLT eigenmodes and rescaling
-
-v2.0-- Support for oversampling with and without new power.
-       N.B. The generation of modes from RNG has changed!
-       Use "ZD_Version = 1" to get the old phases
-       (but beware version 1 phases depend on ZD_NumBlock).
-*/
-
-#define VERSION "zeldovich_v2.0"
-
 #include <cmath>
 #include <cassert>
 #include <cstdio>
@@ -38,49 +11,30 @@ v2.0-- Support for oversampling with and without new power.
 #include <fstream>
 #include <gsl/gsl_rng.h>
 #include <time.h>
-#include "spline_function.h"
-#include "header.h"
-#include "ParseHeader.hh"
 #include <omp.h>
+
+#include "fftw3.h"
+
+#include "ParseHeader.hh"
 #include "pcg-rng/pcg_random.hpp"
 
-#ifdef DIRECTIO
-// DIO libraries
-#include <stdint.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include "file.h"
-#include "file.cpp"
-#include "iolib.cpp"
-#endif
-
-#define Complx std::complex<double>
+#include "zeldovich.h"
+#include "header.h"
+#include "spline_function.h"
+#include "block_array.h"
+#include "output.h"
+#include "power_spectrum.h"
+#include "parameters.h"
 
 static double __dcube;
 #define CUBE(a) ((__dcube=(a))==0.0?0.0:__dcube*__dcube*__dcube)
-
-gsl_rng **v1rng;  // The random number generators for the deprecated ZD_Version=1
-pcg64 *v2rng;  // The random number generators for version 2 (current version)
 
 // The PLT eigenmodes
 double* eig_vecs;
 int64_t eig_vecs_ppd;
 
-// Global maxima of the particle displacements
-double max_disp[3];
-
-#define MAX_PPD ((int64_t) 65536)
-
-#include "parameters.cpp"
-#include "power_spectrum.cpp"
-#include "block_array.cpp"
-#include "output.cpp"
-
 // ===============================================================
 
-// TODO: Replace with our own FFT
-#include "fftw3.h"
 fftw_plan plan1d, plan2d;
 void Setup_FFTW(int n) {
     STimer FFTplanning;
@@ -94,7 +48,7 @@ void Setup_FFTW(int n) {
     wisdom_exists = fftw_import_wisdom_from_filename(wisdom_file);
     fprintf(stderr,"FFTW Wisdom import from file \"%s\" returned %d (%s).\n", wisdom_file, wisdom_exists, wisdom_exists == 1 ? "success" : "failure");
 
-    fftw_complex *p;
+    fftw_complex *p = NULL;
     // p = new fftw_complex[n*n];
     int ret = posix_memalign((void **)&p, 4096, n*n*sizeof(Complx));
     plan1d = fftw_plan_dft_1d(n, p, p, +1, FFTW_PATIENT);
@@ -301,7 +255,7 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
 
     pcg64 checkpoint;
     if(ver == 2){
-        checkpoint = v2rng[y];
+        checkpoint = Pk.v2rng[y];
     } 
 
     ky = y>ppdhalf?y-ppd:y;        // Nyquist wrapping
@@ -335,7 +289,7 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
             }
             else if (ver != 1){
                 if(nskip){
-                    v2rng[y].advance(2*nskip);
+                    Pk.v2rng[y].advance(2*nskip);
                     nskip = 0;
                 }
                 D = Pk.cgauss<2>(sqrt(k2), y);
@@ -418,9 +372,9 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
     } // End the x-z loops
 
     if(ver != 1){
-        //printf("Made %lu calls (nskip at end %lu)\n", (uint64_t) (v2rng[y]-checkpoint), nskip);
-        v2rng[y].advance(2*nskip);
-        assert(v2rng[y]-checkpoint == 2*MAX_PPD*MAX_PPD);
+        //printf("Made %lu calls (nskip at end %lu)\n", (uint64_t) (Pk.v2rng[y]-checkpoint), nskip);
+        Pk.v2rng[y].advance(2*nskip);
+        assert(Pk.v2rng[y]-checkpoint == 2*MAX_PPD*MAX_PPD);
     }
 
     // Need to do something special for ky=0 to enforce the 
@@ -657,10 +611,9 @@ int main(int argc, char *argv[]) {
     
     FILE *output;
     double memory;
-    density_variance = 0.0;
     Parameters param(argv[1]);
 
-    PowerSpectrum Pk(10000);
+    PowerSpectrum Pk(10000, param);
     if(strlen(param.Pk_filename) > 0){
         if (Pk.InitFromFile(param.Pk_filename,param)!=0) return 1;
     } else {

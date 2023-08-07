@@ -11,10 +11,15 @@
 #include <errno.h>
 #include <mutex>
 
+#include "output.h"
+
 #define YX(_slab,_y,_x) _slab[(_x)+array.ppd*(_y)]
 
 #define WRAP(_x) if (_x<0.0) _x += param.boxsize; \
     if (_x>=param.boxsize) _x -= param.boxsize;
+
+// Global maxima of the particle displacements
+double max_disp[3];
 
 double density_variance;
 void *output_tmp;  // output buffer
@@ -24,29 +29,6 @@ STimer outtimer;
 size_t output_bytes_written = 0;
 std::mutex output_mutex;
 
-class ZelParticle {
-public:
-    unsigned short i,j,k;
-    double displ[3];
-};
-class ZelSimpleParticle {
-public:
-    float displ[3];
-};
-class RVZelParticle {
-public:
-    unsigned short i,j,k;
-    float displ[3];
-    float vel[3];
-};
-class RVdoubleZelParticle {
-public:
-    unsigned short i,j,k;
-    double displ[3];
-    double vel[3];
-};
-
-enum OutputType {OUTPUT_ZEL, OUTPUT_RVZEL, OUTPUT_RVDOUBLEZEL, OUTPUT_ZEL_SIMPLE};
 OutputType param_icformat;
 size_t sizeof_outputtype;
 
@@ -198,9 +180,6 @@ BlockArray& array, Parameters& param) {
     
     return;
 }
-
-int CleanDirectory(const char *path);
-int CreateDirectories(const char *path);
 
 void SetupOutputDir(Parameters &param){
     CleanDirectory(param.output_dir);
