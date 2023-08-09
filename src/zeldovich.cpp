@@ -698,7 +698,7 @@ double _outbufferGiB = 0;
     
     if(param.qdensity != 2){
         fprintf(stderr,"The maximum component-wise displacements are (%g, %g, %g), same units as BoxSize.\n", max_disp[0], max_disp[1], max_disp[2]);
-        fprintf(stderr,"For Abacus' 2LPT implementation to work (assuming FINISH_WAIT_RADIUS = 1),\n\tthis implies a maximum CPD of %d\n", (int) (param.boxsize/(2*max_disp[2])));  // The slab direction is z in this code
+        fprintf(stderr,"For Abacus' 2LPT implementation to work (assuming FINISH_WAIT_RADIUS = 1),\n\tthis implies a maximum CPD of %d\n", (int) (param.boxsize/(2*fabs(max_disp[2]))));  // The slab direction is z in this code
     }
     // fclose(output);
     totaltime.Stop();

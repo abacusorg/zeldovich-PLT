@@ -138,7 +138,7 @@ BlockArray& array, Parameters& param) {
 
                 // Track the global max displacement
                 for(int j = 0; j < 3; j++){
-                    max_disp[j] = pos[j] > max_disp[j] ? pos[j] : max_disp[j];
+                    max_disp[j] = fabs(pos[j]) > fabs(max_disp[j]) ? pos[j] : max_disp[j];
                 }
             }
             
