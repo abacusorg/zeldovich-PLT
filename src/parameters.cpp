@@ -34,6 +34,7 @@ Parameters::Parameters(char *inputfile): Header() {
     strcpy(PLT_filename,""); // Legal default
     qPLTrescale = 0; // Legal default
     PLT_target_z = 0.; // Legal default, probably don't want!
+    f_NL = 0.;  // Legal default; no primordial non-Gaussianity
     k_cutoff = 1.; // Legal default (corresponds to k_nyquist)
     strcpy(ICFormat,""); // Illegal default
     AllowDirectIO = 0;  // Legal default for most cases
@@ -84,6 +85,7 @@ void Parameters::register_vars(void) {
     installscalar("ZD_qPLT_rescale",qPLTrescale,DONT_CARE);
     installscalar("ZD_PLT_target_z",PLT_target_z,DONT_CARE);
     installscalar("ZD_k_cutoff",k_cutoff,DONT_CARE);
+    installscalar("ZD_f_NL",f_NL,DONT_CARE);
     installscalar("ICFormat",ICFormat,MUST_DEFINE);
     installscalar("AllowDirectIO",AllowDirectIO,DONT_CARE);
     installscalar("ZD_Version",version,DONT_CARE);

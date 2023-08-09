@@ -225,10 +225,10 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
     // STimer cpu, fft;
     // cpu.Start();
 
-    Complx D,F,G,H;
+    Complx D,F,G,H,phi;
     double f;
     Complx I(0.0,1.0);
-    double k2;
+    double k2, k2_raw;
     unsigned int a;
     int x,y,z, kx,ky,kz, xHer,yresHer,zHer;
     int64_t ppd = array.ppd;
@@ -273,7 +273,8 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
             kx = x>ppdhalf?x-ppd:x;        // Nyquist wrapping
             xHer = ppd-x; if (x==0) xHer=0;    // Reflection
             // We will pack two complex arrays
-            k2 = (kx*kx+ky*ky+kz*kz)*fundamental2;
+            k2_raw = kx*kx+ky*ky+kz*kz;
+            k2 = k2_raw*fundamental2;
             
             // Force Nyquist elements to zero, being extra careful with rounding
             int kmax = (double)ppdhalf*ik_cutoff+.5;
@@ -300,10 +301,9 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
             }
             // D = 0.1;    // If we need a known level
             
-            k2 *= ifundamental; // Get units of F,G,H right
             if (k2==0.0) k2 = 1.0;  // Avoid divide by zero
             // if (!(ky==5)) D=0.0;    // Pick out one plane
-            double ik2 = 1.0/k2;
+            double ik2 = 1./k2_raw;  // dimensionless
             
             // No-op this math if we aren't going to use it
             if(D != 0.){
@@ -331,12 +331,17 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
                     }
                 }
         
-                F = rescale*I*e.vec[0]*ik2*D;
-                G = rescale*I*e.vec[1]*ik2*D;
-                H = rescale*I*e.vec[2]*ik2*D;
+                F = rescale*I*e.vec[0]*ifundamental*ik2*D;
+                G = rescale*I*e.vec[1]*ifundamental*ik2*D;
+                H = rescale*I*e.vec[2]*ifundamental*ik2*D;
+
+                if (param.f_NL != 0.) {
+                    phi = ik2*D;
+                }
             } else {
                 F = G = H = 0.0;
                 f = 0.;
+                phi = 0.;
             }
             
             if(!just_density){
@@ -345,10 +350,14 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
                 // H = F = D = 0.0;   // Test that the Hermitian aspects work
                 // Now A = D+iF and B = G+iH.  
                 // A is in array 0; B is in array 1
-                AYZX(slab,0,yres,z,x) = D+I*F;
+                
+                // Density is not typically output, so we can replace it with phi if needed for f_NL
+                Complx DorPhi = (param.f_NL != 0. && !param.qPLT) ? phi : D;
+
+                AYZX(slab,0,yres,z,x) = DorPhi+I*F;
                 AYZX(slab,1,yres,z,x) = G+I*H;
                 if(param.qPLT){
-                    AYZX(slab,2,yres,z,x) = Complx(0,0) + I*F*f;
+                    AYZX(slab,2,yres,z,x) = phi + I*F*f;
                     AYZX(slab,3,yres,z,x) = G*f + I*H*f;
                 }
                 // And we need to store the complex conjugate
@@ -358,10 +367,10 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
                 // for the y transform.  For now, we want the two block
                 // boundaries to match.  This means that the conjugates 
                 // for y=0 are being saved, which will be used below.
-                AYZX(slabHer,0,yresHer,zHer,xHer) = conj(D)+I*conj(F);
+                AYZX(slabHer,0,yresHer,zHer,xHer) = conj(DorPhi)+I*conj(F);
                 AYZX(slabHer,1,yresHer,zHer,xHer) = conj(G)+I*conj(H);
                 if(param.qPLT){
-                    AYZX(slabHer,2,yresHer,zHer,xHer) = 0. + I*conj(F*f);
+                    AYZX(slabHer,2,yresHer,zHer,xHer) = conj(phi) + I*conj(F*f);
                     AYZX(slabHer,3,yresHer,zHer,xHer) = conj(G*f) + I*conj(H*f);
                 }
             } else {

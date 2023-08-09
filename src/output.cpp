@@ -39,11 +39,13 @@ BlockArray& array, Parameters& param) {
     thisouttimer.Start();
     double thisdensity_variance=0.0;
     int just_density = param.qdensity == 2;  // no displacements
+    int have_dens = just_density || param.qPLT || param.f_NL == 0.;
 
     // Write out one slab of particles
     int x,y;
     double pos[3], vel[3], dens;
     double norm, densitynorm, vnorm;
+    double fnl_factor = 1.;  // (1 + 2*f_NL*Phi)
     // We also need to fix the normalizations, which come from many places:
     // 1) We used ik/k^2 to apply the velocities.
     //    We did correctly divide by param.fundamental when doing this.
@@ -54,6 +56,7 @@ BlockArray& array, Parameters& param) {
     // this is simply the displacement field.  However, this does happen
     // to be v/H, which is correct for the redshift-space displacement in EdS
     norm = 1.0; densitynorm = 1.0;
+    dens = 0.;
     
     // We may also need to apply an f_growth factor to the velocities
     // from the addition of a smooth, non-clustering background component
@@ -75,19 +78,25 @@ BlockArray& array, Parameters& param) {
             //       pos[0] = x*param.separation+imag(YX(slab1,y,x))*norm;
             //       pos[1] = y*param.separation+real(YX(slab2,y,x))*norm;
             //       pos[2] = z*param.separation+imag(YX(slab2,y,x))*norm;
-            dens = real(YX(slab1,y,x))*densitynorm;
+            if(have_dens){
+                dens = real(YX(slab1,y,x))*densitynorm;
+            }
             if(!just_density){
-                pos[0] = imag(YX(slab1,y,x))*norm;
-                pos[1] = real(YX(slab2,y,x))*norm;
-                pos[2] = imag(YX(slab2,y,x))*norm;
+                if(param.f_NL != 0.){
+                    double phi = param.qPLT ? real(YX(slab3,y,x)) : real(YX(slab1,y,x));
+                    fnl_factor = 1 + 2*param.f_NL*phi;
+                }
+                pos[0] = imag(YX(slab1,y,x))*fnl_factor*norm;
+                pos[1] = real(YX(slab2,y,x))*fnl_factor*norm;
+                pos[2] = imag(YX(slab2,y,x))*fnl_factor*norm;
                 if(param.qPLT){
-                    vel[0] = imag(YX(slab3,y,x))*vnorm;
-                    vel[1] = real(YX(slab4,y,x))*vnorm;
-                    vel[2] = imag(YX(slab4,y,x))*vnorm;
+                    vel[0] = imag(YX(slab3,y,x))*fnl_factor*vnorm;
+                    vel[1] = real(YX(slab4,y,x))*fnl_factor*vnorm;
+                    vel[2] = imag(YX(slab4,y,x))*fnl_factor*vnorm;
                 } else {
-                    vel[0] = imag(YX(slab1,y,x))*vnorm;
-                    vel[1] = real(YX(slab2,y,x))*vnorm;
-                    vel[2] = imag(YX(slab2,y,x))*vnorm;
+                    vel[0] = imag(YX(slab1,y,x))*fnl_factor*vnorm;
+                    vel[1] = real(YX(slab2,y,x))*fnl_factor*vnorm;
+                    vel[2] = imag(YX(slab2,y,x))*fnl_factor*vnorm;
                     //vel[0] = 0; vel[1] = 0;vel[2] = 0;
                 }
                 //            WRAP(pos[0]);
@@ -142,9 +151,11 @@ BlockArray& array, Parameters& param) {
                 }
             }
             
-            if(param.qdensity)
-                densoutput_tmp[i] = dens;  // casts to float
-            thisdensity_variance += dens*dens;
+            if(have_dens){
+                if(param.qdensity)
+                    densoutput_tmp[i] = dens;  // casts to float
+                thisdensity_variance += dens*dens;
+            }
 
             // cic->add_cic(param.boxsize,pos);
 
@@ -165,7 +176,7 @@ BlockArray& array, Parameters& param) {
     int64_t totsize = array.ppd*array.ppd*sizeof_outputtype;
 
     // Append to the density file
-    if (param.qdensity) {
+    if (param.qdensity && have_dens) {
         // This whole function is called in z order presently, so we just append density planes to the same file
         fwrite(densoutput_tmp, sizeof(*densoutput_tmp)*array.ppd*array.ppd, 1, densfp);
         totsize += sizeof(*densoutput_tmp)*array.ppd*array.ppd;

@@ -45,6 +45,8 @@ public:
     char PLT_filename[1024]; // file containing PLT eigenmodes
     int qPLTrescale; // If non-zero, rescale the initial amplitudes to match continuum linear theory at PLT_target_z
     double PLT_target_z; // The target redshift for the PLT rescaling
+
+    double f_NL;  // phi^2(x) prefactor for local primordial non-Gaussianity
     
     char ICFormat[1024]; // Abacus's expected input format (i.e. our output format)
     
