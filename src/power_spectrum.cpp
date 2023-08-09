@@ -307,6 +307,3 @@ Complx PowerSpectrum::cgauss<2>(double wavenumber, int64_t rng) {
 
     return Complx(g1,g2);
 }
-
-void PowerSpectrum::advance_rng(int64_t n){
-}

@@ -45,6 +45,4 @@ public:
 
     template <int Ver>
     Complx cgauss(double wavenumber, int64_t rng);
-
-    void advance_rng(int64_t n);
 };
