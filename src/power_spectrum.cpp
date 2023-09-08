@@ -6,11 +6,14 @@
 PowerSpectrum::PowerSpectrum(int n, Parameters& param) : SplineFunction(n) {
     is_powerlaw = 0;
     powerlaw_index = 1000;
+    kmin = std::numeric_limits<double>::max();
+    kmax = std::numeric_limits<double>::min();
 
     // Set up multiple RNGs to support parallelism and over-/down-sampling
     //seed the rng. a seed of zero uses the current time
     unsigned long int longseed = param.seed;
     block = param.ppd/param.numblock;
+    n_s = param.n_s;
 
     if(param.version == 1){
         v1rng = new gsl_rng*[block];
@@ -138,6 +141,7 @@ int PowerSpectrum::InitFromFile(char filename[], Parameters& param) {
         k*=param.Pk_scale;
         if (k>0.0) {
             this->load(log(k),log(P));
+            kmin = std::min(k,kmin);
         } else {
             this->load(-1e3,log(P));
         }
@@ -155,6 +159,7 @@ int PowerSpectrum::InitFromPowerLaw(double _powerlaw_index, Parameters& param){
     powerlaw_index = _powerlaw_index;
     is_powerlaw = 1;
     fprintf(stderr,"Initializing power spectrum with power law index %g\n", powerlaw_index);
+    kmin = 1e-4;  // Arbitrary; used by f_NL
 
     Normalize(param);
     return 0;
@@ -166,7 +171,7 @@ void PowerSpectrum::Normalize(Parameters& param){
 
     // Might still have to normalize things!
     if (param.Pk_norm>0.0) { // Do a normalization 
-        fprintf(stderr,"Input sigma(%f) = %f\n", param.Pk_norm, sigmaR(param.Pk_norm));
+        fprintf(stderr,"Input sigma(%f) = %.6g\n", param.Pk_norm, sigmaR(param.Pk_norm));
 
         if(param.Pk_sigma > 0){
             normalization = param.Pk_sigma/sigmaR(param.Pk_norm);
@@ -178,7 +183,7 @@ void PowerSpectrum::Normalize(Parameters& param){
             assert(param.Pk_sigma > 0 || param.Pk_sigma_ratio > 0);  // Illegal state! We checked this in the params
         }
 
-        fprintf(stderr,"Final sigma(%f) = %f\n", param.Pk_norm, sigmaR(param.Pk_norm));
+        fprintf(stderr,"Final sigma(%f) = %.6g\n", param.Pk_norm, sigmaR(param.Pk_norm));
     }
     // Might need to normalize to the box volume.  This is appropriate
     // if the iFFT is like FFTW, i.e., not dividing by N.
@@ -190,6 +195,9 @@ void PowerSpectrum::Normalize(Parameters& param){
     fixed_power = param.qPk_fix_to_mean;
     if (fixed_power)
         fprintf(stderr,"Fixing density mode amplitudes to sqrt(P(k))\n");
+
+    primordial_norm = 1.;
+    primordial_norm = this->power(this->kmin) / this->primordial_power(this->kmin);
 }
 
 double PowerSpectrum::power(double wavenumber) {
@@ -221,6 +229,22 @@ it) to get rid of this warning.
         return exp(this->val(log(wavenumber))-wavenumber*wavenumber*this->Pk_smooth2)*normalization;
     }
 }
+
+
+double PowerSpectrum::primordial_power(double wavenumber){
+    if (wavenumber<=0.0)
+        return 0.0;
+    return primordial_norm * exp(log(wavenumber) * n_s);
+}
+
+
+double PowerSpectrum::infer_Tk(double wavenumber){
+    // We call this "infer_Tk" to make it clear that we're inferring the value
+    // by assuming T(k) = 1 on large scales, rather than reading a file with
+    // the transfer function.
+    return sqrt(power(wavenumber) / primordial_power(wavenumber));
+}
+
 
 // ZD_Version 1
 template <>
