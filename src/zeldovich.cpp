@@ -228,7 +228,7 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
     Complx D,F,G,H,phi;
     double f;
     Complx I(0.0,1.0);
-    double k2, k2_raw;
+    double kmag, k2;
     unsigned int a;
     int x,y,z, kx,ky,kz, xHer,yresHer,zHer;
     int64_t ppd = array.ppd;
@@ -273,8 +273,8 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
             kx = x>ppdhalf?x-ppd:x;        // Nyquist wrapping
             xHer = ppd-x; if (x==0) xHer=0;    // Reflection
             // We will pack two complex arrays
-            k2_raw = kx*kx+ky*ky+kz*kz;
-            k2 = k2_raw*fundamental2;
+            k2 = (kx*kx+ky*ky+kz*kz)*fundamental2;
+            kmag = sqrt(k2);
             
             // Force Nyquist elements to zero, being extra careful with rounding
             int kmax = (double)ppdhalf*ik_cutoff+.5;
@@ -293,17 +293,17 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
                     Pk.v2rng[y].advance(2*nskip);
                     nskip = 0;
                 }
-                D = Pk.cgauss<2>(sqrt(k2), y);
+                D = Pk.cgauss<2>(kmag, y);
             } else {
                 // We deliberately only call cgauss() if we are inside the k_cutoff region
                 // to get the same phase for a given k and cutoff region, no matter the ppd
-                D = Pk.cgauss<1>(sqrt(k2),yres);
+                D = Pk.cgauss<1>(kmag,yres);
             }
             // D = 0.1;    // If we need a known level
             
             if (k2==0.0) k2 = 1.0;  // Avoid divide by zero
             // if (!(ky==5)) D=0.0;    // Pick out one plane
-            double ik2 = 1./k2_raw;  // dimensionless
+            double ik2 = 1./k2;
             
             // No-op this math if we aren't going to use it
             if(D != 0.){
@@ -331,12 +331,18 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
                     }
                 }
         
-                F = rescale*I*e.vec[0]*ifundamental*ik2*D;
-                G = rescale*I*e.vec[1]*ifundamental*ik2*D;
-                H = rescale*I*e.vec[2]*ifundamental*ik2*D;
+                F = rescale*I*e.vec[0]*param.fundamental*ik2*D;
+                G = rescale*I*e.vec[1]*param.fundamental*ik2*D;
+                H = rescale*I*e.vec[2]*param.fundamental*ik2*D;
 
                 if (param.f_NL != 0.) {
-                    phi = ik2*D;
+                    double H0 = 100.;  // km/s/(Mpc/h)
+                    double c = 299792.458;  // km/s
+                    double growth = 1. / (1 + param.z_initial);  // EdS, normalized to D=a at high z
+                    // 1108.5512, eq. 50
+                    double invM = 3. * param.Omega_M * H0 * H0 / \
+                        (2. * growth * c * c * Pk.infer_Tk(kmag) * k2);
+                    phi = invM * D;
                 }
             } else {
                 F = G = H = 0.0;
