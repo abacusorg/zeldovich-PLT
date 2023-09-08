@@ -197,6 +197,13 @@ overall memory usage.
 We provide a precompted set of 128<sup>3</sup> numerical eigenmodes with this code.
 The code does linear interpolation if a finer FFT mesh is being used.
 
+## Primordial Non-Gaussianity
+This code supports the generation of initial conditions with local primordial
+non-Gaussianity ($f_NL$). The parameters that affect f_NL are:
+* `ZD_f_NL`: the ampltiude of the non-Gaussianity
+* `ZD_n_s`: for inferring the transfer function
+* `Omega_M`: for computing the Bardeen potential from the density
+* `InitialRedshift`: for computing the EdS growth factor
 
 ## Parameter file options
 `ZD_Seed`: *integer*  
