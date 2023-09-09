@@ -242,6 +242,8 @@ double PowerSpectrum::infer_Tk(double wavenumber){
     // We call this "infer_Tk" to make it clear that we're inferring the value
     // by assuming T(k) = 1 on large scales, rather than reading a file with
     // the transfer function.
+    if (wavenumber<=0.0)
+        return 1.0;
     return sqrt(power(wavenumber) / primordial_power(wavenumber));
 }
 

@@ -36,6 +36,12 @@ BlockArray::BlockArray(int _ppd, int _numblock, int _narray, char *_dir, int _ra
 
     if(part != 2){
         // Make directories for the zeldovich blocks
+        int ret = mkdir(TMPDIR, 0775);
+        int reason = errno;
+        if(ret != 0 && reason != EEXIST){
+            fprintf(stderr, "mkdir(\"%s\") failed for reason %s\n", TMPDIR, strerror(reason));
+            exit(1);
+        }
         for(int yblock = 0; yblock < numblock; yblock++){
             char blockdir[1100];
             sprintf(blockdir, "%s/zeldovich.%1d", TMPDIR, yblock);
@@ -93,6 +99,8 @@ BlockArray::~BlockArray() {
                 exit(1);
             }
         }
+        // Remove the TMPDIR if it's empty
+        rmdir(TMPDIR);
     }
 
     double serial_time = wtimer.Elapsed()/omp_get_max_threads();
@@ -272,6 +280,77 @@ void BlockArray::LoadBlock(int yblock, int zblock, Complx *slab) {
     return;
 }
 
+void BlockArray::StoreBlockForward(int yblock, int zblock, Complx *slab) {
+    STimer thiswtimer;  // write timer
+    thiswtimer.Start();
+    int64_t totsize = narray*block*block*ppd;
+    Complx *StoreBlock_tmp;  // One extra block for fast transposes
+    int ret = posix_memalign((void **)&StoreBlock_tmp, 4096, totsize*sizeof(Complx));
+    assert(ret==0);
+
+    int64_t i = 0;
+
+    for (unsigned int a=0;a<narray;a++) 
+        for (int yres=0;yres<block;yres++) {
+            int y = yres+block*yblock;
+            for (int zres=0;zres<block;zres++) {
+                // Copy the whole X skewer
+                memcpy(StoreBlock_tmp+i, &(BLK_AZYX(slab,a,zres,y,0)), ppd*sizeof(Complx));
+                i+=ppd;
+            }
+        }
+
+    assert(i == totsize);
+
+    FILE *fp = bopen(yblock,zblock,"w");
+    bwrite(fp, StoreBlock_tmp, totsize);
+    bclose(fp);
+    free(StoreBlock_tmp);
+
+    thiswtimer.Stop();
+    array_mutex.lock();
+    wtimer.increment(thiswtimer.timer);
+    bytes_written += totsize*sizeof(Complx);
+    files_written++;
+    //fprintf(stderr, "StoreBlock took %.3g sec to write %.3g MB ==> %.3g MB/sec\n",
+    //    wtimer.Elapsed(), totsize/1e6, totsize/1e6/wtimer.Elapsed());
+    array_mutex.unlock();
+}
+
+void BlockArray::LoadBlockForward(int yblock, int zblock, Complx *slab) {
+    STimer thisrtimer;  // read timer
+    thisrtimer.Start();
+    
+    int64_t totsize = narray*block*block*ppd;
+    Complx *StoreBlock_tmp;  // One extra block for fast transposes
+    int ret = posix_memalign((void **)&StoreBlock_tmp, 4096, totsize*sizeof(Complx));
+    assert(ret==0);
+    FILE *fp = bopen(yblock,zblock,"r");
+    bread(fp,StoreBlock_tmp, totsize);
+    bclose(fp);
+    if (quickdelete) bremove(yblock, zblock);
+
+    int64_t i = 0;
+    for (unsigned int a=0;a<narray;a++)
+        for (int yres=0;yres<block;yres++)
+            for (int zres=0;zres<block;zres++) {
+                int z = zres+block*zblock;
+                memcpy(&(BLK_AYZX(slab,a,yres,z,0)), StoreBlock_tmp+i, ppd*sizeof(Complx));
+                i+=ppd;
+            }
+    assert(i == ppd*narray*block*block);
+    free(StoreBlock_tmp);
+
+    thisrtimer.Stop();
+    array_mutex.lock();
+    rtimer.increment(thisrtimer.timer);
+    bytes_read += totsize*sizeof(Complx);
+    //fprintf(stderr, "LoadBlock took %.3g sec to read %.3g MB ==> %.3g MB/sec\n",
+    //        rtimer.Elapsed(), totsize/1e6, totsize/1e6/rtimer.Elapsed());
+    array_mutex.unlock();
+    return;
+}
+
 #else   // not DISK
 // These routines are for reading in and out of a big array in memory
 
@@ -301,6 +380,56 @@ void BlockArray::StoreBlock(int yblock, int zblock, Complx *slab) {
     wtimer.increment(thiswtimer.timer);
     bytes_written += narray*block*block*ppd*sizeof(Complx);
     array_mutex.unlock();
+}
+
+void BlockArray::StoreBlockForward(int yblock, int zblock, Complx *slab) {
+    STimer thiswtimer;
+    thiswtimer.Start();
+
+    unsigned int a;
+    int yres,zres,y;
+    Complx *IOptr = bopen(yblock,zblock,"w");
+    for (a=0;a<narray;a++) 
+    for (yres=0;yres<block;yres++)
+    for (zres=0;zres<block;zres++)  {
+        y = yres+block*yblock;
+        // Copy the whole X skewer
+        bwrite(IOptr, &(BLK_AZYX(slab,a,zres,y,0)),ppd);
+    }
+    bclose(IOptr);
+
+    thiswtimer.Stop();
+    array_mutex.lock();
+    wtimer.increment(thiswtimer.timer);
+    bytes_written += narray*block*block*ppd*sizeof(Complx);
+    array_mutex.unlock();
+}
+
+void BlockArray::LoadBlockForward(int yblock, int zblock, Complx *slab) {
+    STimer thisrtimer;
+    thisrtimer.Start();
+
+    unsigned int a;
+    int yres,zres,yshift,z;
+    Complx *IOptr = bopen(yblock,zblock,"r");
+    for (a=0;a<narray;a++)
+    for (yres=0;yres<block;yres++)
+    for (zres=0;zres<block;zres++) {
+        z = zres+block*zblock;
+        // TODO: need shift for forward?
+        // if (y>=ppdhalf) yshift=y+1; else yshift=y;
+        // if (yshift==ppd) yshift=ppdhalf;
+        bread(IOptr, &(BLK_AYZX(slab,a,yres,z,0)),ppd);
+    }
+    bclose(IOptr);
+
+    thisrtimer.Stop();
+    int64_t totsize = narray*block*block*ppd*sizeof(Complx);
+    array_mutex.lock();
+    rtimer.increment(thisrtimer.timer);
+    bytes_read += totsize;
+    array_mutex.unlock();
+    return;
 }
 
 void BlockArray::LoadBlock(int yblock, int zblock, Complx *slab) {
@@ -343,7 +472,7 @@ Complx *BlockArray::bopen(int yblock, int zblock, const char *mode) {
     // Set up for reading or writing this block
     assert(yblock>=0&&yblock<numblock);
     assert(zblock>=0&&zblock<numblock);
-    IOptr = arr+((int64_t)zblock*numblock+yblock)*(block*block*ppd*narray);
+    Complx *IOptr = arr+((int64_t)zblock*numblock+yblock)*(block*block*ppd*narray);
     return IOptr;
 }
 

@@ -36,7 +36,8 @@ int64_t eig_vecs_ppd;
 // ===============================================================
 
 fftw_plan plan1d, plan2d;
-void Setup_FFTW(int n) {
+fftw_plan plan1d_forward, plan2d_forward;
+void Setup_FFTW(int n, int plan_forward) {
     STimer FFTplanning;
 
     FFTplanning.Start();
@@ -53,6 +54,10 @@ void Setup_FFTW(int n) {
     int ret = posix_memalign((void **)&p, 4096, n*n*sizeof(Complx));
     plan1d = fftw_plan_dft_1d(n, p, p, +1, FFTW_PATIENT);
     plan2d = fftw_plan_dft_2d(n, n, p, p, +1, FFTW_PATIENT);
+    if (plan_forward){
+        plan1d_forward = fftw_plan_dft_1d(n, p, p, -1, FFTW_PATIENT);
+        plan2d_forward = fftw_plan_dft_2d(n, n, p, p, -1, FFTW_PATIENT);
+    }
     free(p);
     // delete []p;
     ret = fftw_export_wisdom_to_filename(wisdom_file);
@@ -100,11 +105,34 @@ void InverseFFT_Yonly(Complx *p, int n) {
     //delete []tmp;
 }
 
+void Forward1dFFT(Complx *p, int n) {
+    fftw_execute_dft(plan1d_forward, (fftw_complex *)p, (fftw_complex *)p);
+}
+void Forward2dFFT(Complx *p, int n) {
+    fftw_execute_dft(plan2d_forward, (fftw_complex *)p, (fftw_complex *)p);
+}
+void ForwardFFT_Yonly(Complx *p, int n) {
+    Complx *tmp;
+    int j,k;
+    int ret = posix_memalign((void **)&tmp, 4096, n*sizeof(Complx));
+    assert(ret==0);
+
+    for (j=0;j<n;j++) {
+        // We will load one row at a time
+        for (k=0;k<n;k++) tmp[k] = p[k*n+j];
+        Forward1dFFT(tmp, n);
+        for (k=0;k<n;k++) p[k*n+j] = tmp[k];
+    }
+    free(tmp);
+}
+
 //================================================================
 
 // We use a set of X-Z arrays of Complx numbers (ordered by A and Y).
 // array.ppd is 64-bit, so this expression should be safe from overflow
 #define AYZX(_slab,_a,_y,_z,_x) _slab[(int64_t)(_x)+array.ppd*((_z)+array.ppd*((_a)+array.narray*(_y)))]
+// narray always 1
+#define AYZX_PHI(_slab,_a,_y,_z,_x) _slab[(int64_t)(_x)+array.ppd*((_z)+array.ppd*((_a)+(_y)))]
 
 typedef struct {
     double vec[3];
@@ -220,7 +248,8 @@ eigenmode get_eigenmode(int kx, int ky, int kz, int64_t ppd, int qPLT){
 }
 
 void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk, 
-                int yblock, int yres, Complx *slab, Complx *slabHer) {
+                int yblock, int yres, Complx *slab, Complx *slabHer,
+                int gen_phi, Complx* input_phi_slab) {
     // Note that this function is called from within a parallel for-loop over yres
     // STimer cpu, fft;
     // cpu.Start();
@@ -252,6 +281,10 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
     int ver = param.version;
 
     y = yres+yblock*array.block;
+
+    if(input_phi_slab){
+        ForwardFFT_Yonly(&(AYZX_PHI(input_phi_slab,0,yres,0,0)),ppd);
+    }
 
     pcg64 checkpoint;
     if(ver == 2){
@@ -304,6 +337,31 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
             if (k2==0.0) k2 = 1.0;  // Avoid divide by zero
             // if (!(ky==5)) D=0.0;    // Pick out one plane
             double ik2 = 1./k2;
+
+            double H0 = 100.;  // km/s/(Mpc/h)
+            double c = 299792.458;  // km/s
+            double growth = 1. / (1 + param.z_initial);  // EdS, normalized to D=a at high z
+            // 1108.5512, eq. 50
+            double M = 2. * growth * c * c * Pk.infer_Tk(kmag) * k2 / \
+                        (3. * param.Omega_M * H0 * H0);
+
+            if(gen_phi){
+                phi = D / M;
+                
+                AYZX(slab,0,yres,z,x) = phi;
+                AYZX(slabHer,0,yresHer,zHer,xHer) = conj(phi);
+                continue;
+            }
+
+            if(input_phi_slab){
+                if(kx == 0 && ky == 0 && kz == 0){
+                    D = 0.;
+                }
+                else {
+                    phi = AYZX_PHI(input_phi_slab,0,yres,z,x);
+                    D = phi * M;
+                }
+            }
             
             // No-op this math if we aren't going to use it
             if(D != 0.){
@@ -334,20 +392,9 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
                 F = rescale*I*e.vec[0]*param.fundamental*ik2*D;
                 G = rescale*I*e.vec[1]*param.fundamental*ik2*D;
                 H = rescale*I*e.vec[2]*param.fundamental*ik2*D;
-
-                if (param.f_NL != 0.) {
-                    double H0 = 100.;  // km/s/(Mpc/h)
-                    double c = 299792.458;  // km/s
-                    double growth = 1. / (1 + param.z_initial);  // EdS, normalized to D=a at high z
-                    // 1108.5512, eq. 50
-                    double invM = 3. * param.Omega_M * H0 * H0 / \
-                        (2. * growth * c * c * Pk.infer_Tk(kmag) * k2);
-                    phi = invM * D;
-                }
             } else {
                 F = G = H = 0.0;
                 f = 0.;
-                phi = 0.;
             }
             
             if(!just_density){
@@ -356,14 +403,11 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
                 // H = F = D = 0.0;   // Test that the Hermitian aspects work
                 // Now A = D+iF and B = G+iH.  
                 // A is in array 0; B is in array 1
-                
-                // Density is not typically output, so we can replace it with phi if needed for f_NL
-                Complx DorPhi = (param.f_NL != 0. && !param.qPLT) ? phi : D;
 
-                AYZX(slab,0,yres,z,x) = DorPhi+I*F;
+                AYZX(slab,0,yres,z,x) = D+I*F;
                 AYZX(slab,1,yres,z,x) = G+I*H;
                 if(param.qPLT){
-                    AYZX(slab,2,yres,z,x) = phi + I*F*f;
+                    AYZX(slab,2,yres,z,x) = 0. + I*F*f;
                     AYZX(slab,3,yres,z,x) = G*f + I*H*f;
                 }
                 // And we need to store the complex conjugate
@@ -373,10 +417,10 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
                 // for the y transform.  For now, we want the two block
                 // boundaries to match.  This means that the conjugates 
                 // for y=0 are being saved, which will be used below.
-                AYZX(slabHer,0,yresHer,zHer,xHer) = conj(DorPhi)+I*conj(F);
+                AYZX(slabHer,0,yresHer,zHer,xHer) = conj(D)+I*conj(F);
                 AYZX(slabHer,1,yresHer,zHer,xHer) = conj(G)+I*conj(H);
                 if(param.qPLT){
-                    AYZX(slabHer,2,yresHer,zHer,xHer) = conj(phi) + I*conj(F*f);
+                    AYZX(slabHer,2,yresHer,zHer,xHer) = 0. + I*conj(F*f);
                     AYZX(slabHer,3,yresHer,zHer,xHer) = conj(G*f) + I*conj(H*f);
                 }
             } else {
@@ -426,21 +470,31 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
     return;
 }
 
-void ZeldovichZ(BlockArray& array, Parameters& param, PowerSpectrum& Pk) {
+void ZeldovichZ(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
+                int gen_phi, BlockArray* input_phi_array) {
     // Generate the Fourier space density field, one Y block at a time
     // Use it to generate all arrays (density, qx, qy, qz) in Fourier space,
     // Do Z direction inverse FFTs.
     // Pack the result into 'array'.
     Complx *slab, *slabHer;
+    Complx *input_phi_slab = NULL;
     int64_t len = (int64_t)array.block*array.ppd*array.ppd*array.narray;
     
     //slab    = new Complx[len];  // avoid hidden single-threaded zeroing
-    //slabHer = new Complx[len];
 
     int ret = posix_memalign((void **) &slab, 4096, sizeof(Complx)*len);
     assert(ret == 0);
     ret = posix_memalign((void **) &slabHer, 4096, sizeof(Complx)*len);
     assert(ret == 0);
+
+    if (input_phi_array){
+        int64_t phi_slab_len = (int64_t) input_phi_array->block*input_phi_array->ppd*input_phi_array->ppd;
+        ret = posix_memalign((void **) &input_phi_slab, 4096, sizeof(Complx)*phi_slab_len);
+        assert(ret == 0);
+        for(int64_t i = 0; i < phi_slab_len; i++)
+            input_phi_slab[i] = Complx(NAN,NAN);
+    }
+    
     #pragma omp parallel for schedule(static)
     for(int64_t i = 0; i < len; i++){
         slab[i] = Complx(0.,0.);
@@ -451,13 +505,21 @@ void ZeldovichZ(BlockArray& array, Parameters& param, PowerSpectrum& Pk) {
     //
     fprintf(stderr,"Looping over Y: ");
     for (int yblock=0;yblock<array.numblock/2;yblock++) {
+        if(input_phi_array){
+            #pragma omp parallel for schedule(dynamic,1)
+            for (int zblock=0;zblock<array.numblock;zblock++) {
+                // blocks are in [y][z][x], keep them that way
+                input_phi_array->LoadBlockForward(yblock, zblock, input_phi_slab);
+            }
+        }
+
         // We're going to do each pair of Y slabs separately.
         // Load the deltas and do the FFTs for each pair of planes
         fprintf(stderr,".."); fflush(stderr);
         compute_planes.Start();
         #pragma omp parallel for schedule(dynamic,1)
         for (int yres=0;yres<array.block;yres++) {     
-            LoadPlane(array,param,Pk,yblock,yres,slab,slabHer);
+            LoadPlane(array,param,Pk,yblock,yres,slab,slabHer,gen_phi,input_phi_slab);
         }
         compute_planes.Stop();
 
@@ -466,13 +528,14 @@ void ZeldovichZ(BlockArray& array, Parameters& param, PowerSpectrum& Pk) {
         storing.Start();
         #pragma omp parallel for schedule(dynamic,1)
         for (int zblock=0;zblock<array.numblock;zblock++) {
-            array.StoreBlock(yblock,zblock,slab);
+            array.StoreBlock(yblock,zblock,slab);  // assumes slab[y][z][x], transposes to [z][y][x]
             array.StoreBlock(array.numblock-1-yblock,zblock,slabHer);
         }
         storing.Stop();
     }  // End yblock for loop
     free(slabHer);
     free(slab);
+    free(input_phi_slab);
     fprintf(stderr,"\n");
     fprintf(stderr,"Computing, Saving the Planes took %f %f sec\n", compute_planes.Elapsed(), storing.Elapsed());
     return;
@@ -545,7 +608,7 @@ void ZeldovichXY(BlockArray& array, Parameters& param, FILE *output) {
             int z = zres+array.block*zblock;
             if (param.qoneslab<0||z==param.qoneslab) {
                 // We have the option to output only one z slab.
-                WriteParticlesSlab(output,z,
+                WriteParticlesSlab(NULL,z,
                 &(AZYX(slab,0,zres,0,0)), &(AZYX(slab,1,zres,0,0)),
                 &(AZYX(slab,2,zres,0,0)), &(AZYX(slab,3,zres,0,0)),
                 array, param);
@@ -556,6 +619,94 @@ void ZeldovichXY(BlockArray& array, Parameters& param, FILE *output) {
     free(slab);
     fprintf(stderr,"\n");
     fprintf(stderr,"Loading, FFTs, Writing took %f %f %f seconds\n", loading.Elapsed(), fft.Elapsed(), writing.Elapsed());
+    return;
+}
+
+// ===============================================================
+
+void ZeldovichXY_Phi(BlockArray& array, Parameters& param) {
+    // Do the Y & X inverse FFT, apply f_NL, then do the X & Y forward FFT
+    // Do this one Z slab at a time; try to load the data in order.
+    
+    Complx *slab;
+    int64_t len = (int64_t)array.block*array.ppd*array.ppd*array.narray;
+    double inv_ppd3 = 1. / array.ppd / array.ppd / array.ppd;
+
+    int ret = posix_memalign((void **) &slab, 4096, sizeof(Complx)*len);
+    assert(ret == 0);
+    #pragma omp parallel for schedule(static)
+    for(int64_t i = 0; i < len; i++){
+        slab[i] = Complx(0.,0.);
+    }
+
+    fprintf(stderr,"Looping over Z: ");
+    STimer loading, fnl_time, fft, storing;
+
+    for (int zblock=0;zblock<array.numblock;zblock++) {
+        // We'll do one Z slab at a time
+        // Load the slab back in.
+        loading.Start();
+        fprintf(stderr,".");
+        #pragma omp parallel for schedule(dynamic,1)
+        for (int yblock=0;yblock<array.numblock;yblock++) {
+            array.LoadBlock(yblock, zblock, slab);
+        }
+        loading.Stop();
+
+        // The Nyquist frequency y=array.ppd/2 must now be set to 0
+        // because we shifted the data by one location.
+        // FLAW: this assumes PPD is even.
+        fft.Start();
+        int y = array.ppd/2;
+        #pragma omp parallel for schedule(static)
+        for (int zres=0;zres<array.block;zres++) {
+            for (int a=0;a<array.narray;a++) {
+                for (int x=0;x<array.ppd;x++) AZYX(slab,a,zres,y,x) = 0.0;
+            }
+        }
+
+        // Now we want to do the Y & X inverse FFT.
+        for (int a=0;a<array.narray;a++) {
+            #pragma omp parallel for schedule(dynamic,1)
+            for (int zres=0;zres<array.block;zres++) {
+                Inverse2dFFT(&(AZYX(slab,a,zres,0,0)),array.ppd);
+            }
+        }
+        fft.Stop();
+
+        // Now apply f_NL to the phi field
+        fnl_time.Start();
+        for (int zres=0;zres<array.block;zres++) {
+            for (int y = 0; y < array.ppd; y++){
+                for (int x = 0; x < array.ppd; x++){
+                    double phi = real(AZYX(slab,0,zres,y,x));
+                    AZYX(slab,0,zres,y,x) = (phi + param.f_NL * phi * phi) * inv_ppd3;
+                }
+            }
+        }
+        fnl_time.Stop();
+
+        // Forward FFT
+        for (int a=0;a<array.narray;a++) {
+            #pragma omp parallel for schedule(dynamic,1)
+            for (int zres=0;zres<array.block;zres++) {
+                Forward2dFFT(&(AZYX(slab,a,zres,0,0)),array.ppd);
+            }
+        }
+
+        loading.Start();
+        fprintf(stderr,".");
+        #pragma omp parallel for schedule(dynamic,1)
+        for (int yblock=0;yblock<array.numblock;yblock++) {
+            // We have slab[zres][y][x] and will store it as [y][zres][x]
+            array.StoreBlockForward(yblock, zblock, slab);
+        } 
+        loading.Stop();
+
+    } // End zblock for loop
+    free(slab);
+    fprintf(stderr,"\n");
+    fprintf(stderr,"Loading, FFTs, f_NL, storing took %.2f %.2f %.2f %.2f seconds\n", loading.Elapsed(), fft.Elapsed(), fnl_time.Elapsed(), storing.Elapsed());
     return;
 }
 
@@ -681,19 +832,38 @@ double _outbufferGiB = 0;
     }
 
     int quickdelete = 1;
-    BlockArray array(param.ppd,param.numblock,narray,param.output_dir,param.AllowDirectIO, quickdelete, PART);
 
     totaltime.Stop();
     fprintf(stderr,"Preamble took %f seconds\n", totaltime.Elapsed());
     totaltime.Start();
-    Setup_FFTW(param.ppd);
+    Setup_FFTW(param.ppd, param.f_NL != 0.);
 
     totaltime.Stop();
     fprintf(stderr,"Time so far: %f seconds\n", totaltime.Elapsed());
     totaltime.Start();
+    output = 0; // Current implementation doesn't use user-provided output
 
 #ifndef NOPART1
-    ZeldovichZ(array, param, Pk);
+    BlockArray *phi_array = NULL;
+    if(param.f_NL != 0.){
+        fprintf(stderr,"Generating phi field\n");
+        char phi_dir[1030];
+        sprintf(phi_dir, "%s/phi", param.output_dir);
+        phi_array = new BlockArray(param.ppd,param.numblock,1,phi_dir,param.AllowDirectIO, 0, PART);
+
+        ZeldovichZ(*phi_array, param, Pk, 1, NULL);
+
+        totaltime.Stop();
+        fprintf(stderr,"Time so far: %f seconds\n", totaltime.Elapsed());
+        totaltime.Start();
+
+        ZeldovichXY_Phi(*phi_array, param);
+    }
+
+    BlockArray array(param.ppd,param.numblock,narray,param.output_dir,param.AllowDirectIO, quickdelete, PART);
+    ZeldovichZ(array, param, Pk, 0, phi_array);
+    delete phi_array;  phi_array = NULL;
+    
     fprintf(stderr,"Wrote %d files\n", array.files_written);
     totaltime.Stop();
     fprintf(stderr,"Time so far: %f seconds\n", totaltime.Elapsed());

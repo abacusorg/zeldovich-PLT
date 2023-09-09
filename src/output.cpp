@@ -39,13 +39,12 @@ BlockArray& array, Parameters& param) {
     thisouttimer.Start();
     double thisdensity_variance=0.0;
     int just_density = param.qdensity == 2;  // no displacements
-    int have_dens = just_density || param.qPLT || param.f_NL == 0.;
+    int have_dens = just_density || param.qPLT;
 
     // Write out one slab of particles
     int x,y;
     double pos[3], vel[3], dens;
     double norm, densitynorm, vnorm;
-    double fnl_factor = 1.;  // (1 + 2*f_NL*Phi)
     // We also need to fix the normalizations, which come from many places:
     // 1) We used ik/k^2 to apply the velocities.
     //    We did correctly divide by param.fundamental when doing this.
@@ -82,21 +81,17 @@ BlockArray& array, Parameters& param) {
                 dens = real(YX(slab1,y,x))*densitynorm;
             }
             if(!just_density){
-                if(param.f_NL != 0.){
-                    double phi = param.qPLT ? real(YX(slab3,y,x)) : real(YX(slab1,y,x));
-                    fnl_factor = 1 + 2*param.f_NL*phi;
-                }
-                pos[0] = imag(YX(slab1,y,x))*fnl_factor*norm;
-                pos[1] = real(YX(slab2,y,x))*fnl_factor*norm;
-                pos[2] = imag(YX(slab2,y,x))*fnl_factor*norm;
+                pos[0] = imag(YX(slab1,y,x))*norm;
+                pos[1] = real(YX(slab2,y,x))*norm;
+                pos[2] = imag(YX(slab2,y,x))*norm;
                 if(param.qPLT){
-                    vel[0] = imag(YX(slab3,y,x))*fnl_factor*vnorm;
-                    vel[1] = real(YX(slab4,y,x))*fnl_factor*vnorm;
-                    vel[2] = imag(YX(slab4,y,x))*fnl_factor*vnorm;
+                    vel[0] = imag(YX(slab3,y,x))*vnorm;
+                    vel[1] = real(YX(slab4,y,x))*vnorm;
+                    vel[2] = imag(YX(slab4,y,x))*vnorm;
                 } else {
-                    vel[0] = imag(YX(slab1,y,x))*fnl_factor*vnorm;
-                    vel[1] = real(YX(slab2,y,x))*fnl_factor*vnorm;
-                    vel[2] = imag(YX(slab2,y,x))*fnl_factor*vnorm;
+                    vel[0] = imag(YX(slab1,y,x))*vnorm;
+                    vel[1] = real(YX(slab2,y,x))*vnorm;
+                    vel[2] = imag(YX(slab2,y,x))*vnorm;
                     //vel[0] = 0; vel[1] = 0;vel[2] = 0;
                 }
                 //            WRAP(pos[0]);
