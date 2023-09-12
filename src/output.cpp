@@ -39,7 +39,6 @@ BlockArray& array, Parameters& param) {
     thisouttimer.Start();
     double thisdensity_variance=0.0;
     int just_density = param.qdensity == 2;  // no displacements
-    int have_dens = just_density || param.qPLT;
 
     // Write out one slab of particles
     int x,y;
@@ -77,9 +76,7 @@ BlockArray& array, Parameters& param) {
             //       pos[0] = x*param.separation+imag(YX(slab1,y,x))*norm;
             //       pos[1] = y*param.separation+real(YX(slab2,y,x))*norm;
             //       pos[2] = z*param.separation+imag(YX(slab2,y,x))*norm;
-            if(have_dens){
-                dens = real(YX(slab1,y,x))*densitynorm;
-            }
+            dens = real(YX(slab1,y,x))*densitynorm;
             if(!just_density){
                 pos[0] = imag(YX(slab1,y,x))*norm;
                 pos[1] = real(YX(slab2,y,x))*norm;
@@ -146,11 +143,9 @@ BlockArray& array, Parameters& param) {
                 }
             }
             
-            if(have_dens){
-                if(param.qdensity)
-                    densoutput_tmp[i] = dens;  // casts to float
-                thisdensity_variance += dens*dens;
-            }
+            if(param.qdensity)
+                densoutput_tmp[i] = dens;  // casts to float
+            thisdensity_variance += dens*dens;
 
             // cic->add_cic(param.boxsize,pos);
 
@@ -171,7 +166,7 @@ BlockArray& array, Parameters& param) {
     int64_t totsize = array.ppd*array.ppd*sizeof_outputtype;
 
     // Append to the density file
-    if (param.qdensity && have_dens) {
+    if (param.qdensity) {
         // This whole function is called in z order presently, so we just append density planes to the same file
         fwrite(densoutput_tmp, sizeof(*densoutput_tmp)*array.ppd*array.ppd, 1, densfp);
         totsize += sizeof(*densoutput_tmp)*array.ppd*array.ppd;

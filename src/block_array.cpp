@@ -410,7 +410,7 @@ void BlockArray::LoadBlockForward(int yblock, int zblock, Complx *slab) {
     thisrtimer.Start();
 
     unsigned int a;
-    int yres,zres,yshift,z;
+    int yres,zres,z;
     Complx *IOptr = bopen(yblock,zblock,"r");
     for (a=0;a<narray;a++)
     for (yres=0;yres<block;yres++)

@@ -1,6 +1,7 @@
 project('zeldovich-PLT',
         'cpp',
         default_options : ['cpp_std=c++11', 'debug=true', 'optimization=3'],
+        # default_options : ['cpp_std=c++11', 'debug=true', 'b_sanitize=address'],
         )
 add_global_arguments('-march=native', language : 'cpp')
 

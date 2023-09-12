@@ -262,7 +262,6 @@ void LoadPlane(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
     int x,y,z, kx,ky,kz, xHer,yresHer,zHer;
     int64_t ppd = array.ppd;
     int64_t ppdhalf = array.ppdhalf;
-    double ifundamental = 1.0/param.fundamental; // store the inverse
     double fundamental2 = param.fundamental*param.fundamental; // store the square
     double ik_cutoff = 1.0/param.k_cutoff;   // store the inverse
     int just_density = param.qdensity == 2;  // Don't generate displacements
@@ -492,7 +491,7 @@ void ZeldovichZ(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
         ret = posix_memalign((void **) &input_phi_slab, 4096, sizeof(Complx)*phi_slab_len);
         assert(ret == 0);
         for(int64_t i = 0; i < phi_slab_len; i++)
-            input_phi_slab[i] = Complx(NAN,NAN);
+            input_phi_slab[i] = 0.;
     }
     
     #pragma omp parallel for schedule(static)
@@ -528,7 +527,7 @@ void ZeldovichZ(BlockArray& array, Parameters& param, PowerSpectrum& Pk,
         storing.Start();
         #pragma omp parallel for schedule(dynamic,1)
         for (int zblock=0;zblock<array.numblock;zblock++) {
-            array.StoreBlock(yblock,zblock,slab);  // assumes slab[y][z][x], transposes to [z][y][x]
+            array.StoreBlock(yblock,zblock,slab);
             array.StoreBlock(array.numblock-1-yblock,zblock,slabHer);
         }
         storing.Stop();
@@ -676,6 +675,7 @@ void ZeldovichXY_Phi(BlockArray& array, Parameters& param) {
 
         // Now apply f_NL to the phi field
         fnl_time.Start();
+        #pragma omp parallel for schedule(static)
         for (int zres=0;zres<array.block;zres++) {
             for (int y = 0; y < array.ppd; y++){
                 for (int x = 0; x < array.ppd; x++){
@@ -797,8 +797,9 @@ int main(int argc, char *argv[]) {
     } else {
         narray = param.qPLT ? 4 : 2;
     }   
-        
-    memory = CUBE(param.ppd/1024.0)*narray*sizeof(Complx);
+    
+    int mem_narray = param.f_NL != 0 ? (narray + 1) : narray;
+    memory = CUBE(param.ppd/1024.0)*mem_narray*sizeof(Complx);
 
 #ifndef NOPART1
     // Remove any existing IC files
@@ -815,12 +816,12 @@ double _outbufferGiB = 0;
     fprintf(stderr,"Total (out-of-core) memory usage: %5.3f GiB\n", memory);
     fprintf(stderr,"Two slab (in-core) memory usage: %5.3f GiB\n",
         memory/param.numblock*2.0 + memory/param.numblock/param.numblock + _outbufferGiB);  // extra from StoreBlock_tmp
-    fprintf(stderr,"Block file size: %5.3f GiB\n", memory/param.numblock/param.numblock);
+    fprintf(stderr,"Block file size: %5.3f GiB\n", (memory*narray/mem_narray)/param.numblock/param.numblock);
 #else
     fprintf(stderr,"Not compiled with -DDISK; whole problem will reside in memory.\n");
     fprintf(stderr,"Total memory usage: %5.3f GiB\n", memory + memory/param.numblock*2.0 + _outbufferGiB);  // extra is from 2 blocks in ZeldovichZ
     fprintf(stderr,"Two slab memory usage: %5.3f GiB\n", memory/param.numblock*2.0);
-    fprintf(stderr,"Block size: %5.3f GiB\n", memory/param.numblock/param.numblock);
+    fprintf(stderr,"Block size: %5.3f GiB\n", (memory*narray/mem_narray)/param.numblock/param.numblock);
 #endif
 
     if(param.qPLT){
