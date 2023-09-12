@@ -21,3 +21,4 @@ ZD_qPLT = 1
 ZD_qPLT_rescale = 0
 ZD_qPk_fix_to_mean = 0
 ZD_Version = 2
+ZD_f_NL = 0

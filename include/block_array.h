@@ -80,15 +80,17 @@ private:
 public:
     void StoreBlock(int yblock, int zblock, Complx *slab);
     void LoadBlock(int yblock, int zblock, Complx *slab);
+    void StoreBlockForward(int yblock, int zblock, Complx *slab);
+    void LoadBlockForward(int yblock, int zblock, Complx *slab);
 
 #else   // not DISK
     // These routines are for reading in and out of a big array in memory
 
-private: 
-    Complx *IOptr;
 public:
     void StoreBlock(int yblock, int zblock, Complx *slab);
     void LoadBlock(int yblock, int zblock, Complx *slab);
+    void StoreBlockForward(int yblock, int zblock, Complx *slab);
+    void LoadBlockForward(int yblock, int zblock, Complx *slab);
 
 private:
 

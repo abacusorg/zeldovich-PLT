@@ -21,7 +21,10 @@ public:
     double Pk_smooth2;   // param.Pk_smooth squared
     double Rnorm;
     double kmax;  // max k in the input PS
+    double kmin;  // min (non-zero) k in the input PS
     int block;
+    double primordial_norm;
+    double n_s;
 
     gsl_rng **v1rng;  // The random number generators for the deprecated ZD_Version=1
     pcg64 *v2rng;  // The random number generators for version 2 (current version)
@@ -39,6 +42,8 @@ public:
     void Normalize(Parameters& param);
 
     double power(double wavenumber);
+    double primordial_power(double wavenumber);
+    double infer_Tk(double wavenumber);
 
     template <int Ver>
     double one_rand(int64_t i);
