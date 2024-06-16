@@ -197,6 +197,30 @@ overall memory usage.
 We provide a precompted set of 128<sup>3</sup> numerical eigenmodes with this code.
 The code does linear interpolation if a finer FFT mesh is being used.
 
+## Primordial Non-Gaussianity
+This code supports the generation of initial conditions with local primordial
+non-Gaussianity ($f_\mathrm{NL}$). The parameters that affect f_NL are:
+* `ZD_f_NL`: the ampltiude of the non-Gaussianity
+* `ZD_n_s`: for inferring the transfer function
+* `Omega_M`: for computing the Bardeen potential from the density
+* `InitialRedshift`: for computing the EdS growth factor
+
+f_NL is implemented by generating the density modes as a Gaussian random field
+as normal, then converting them to primordial potential $\Phi_g$ by dividing out the
+$M(k,a)$ factor from 1108.5512, eq. 50. $\Phi_g$ is then packed into a `BlockArray` and
+undergoes a backward FFT to get $\Phi_g(x)$ (as the code only supports C->C transforms,
+this does double the necessary work, but is otherwise harmless). In config space,
+we apply local PNG: $\Phi(x) = \Phi_g(x) + f_\mathrm{NL} \Phi_g(x) \Phi_g(x)$. We then
+execute a forward FFT and feed $\Phi$ back into the density mode generation routine,
+where we multiply by $M$ to recover $\delta(k)$.  The rest of the code proceeds as normal.
+
+The $M$ factor is:
+```math
+M(k,a) = \frac{2 D(a) c^2 T(k) k^2}{3 \Omega_M H_0^2}.
+```
+The transfer function $T(k)$ is inferred by this code from the ratio of the primordial power spectrum spectral index $P = k^{n_s}$ to the input power spectrum, where $n_s$ is given by `ZD_n_s`, and assuming $T(k) = 1$ on large scales (smallest $k$ of the input power spectrum). If this assumption needs to be relaxed, one can modify this code to accept a file with an input transfer function.
+
+Note that because f_NL adds an extra array, it increases peak memory/disk usage.
 
 ## Parameter file options
 `ZD_Seed`: *integer*  
@@ -367,7 +391,7 @@ This will generate files of the name `zeldovich.%d.%d`, which should be automati
 deleted after the code has finished.
 
 `InitialRedshift`: *double*  
-The output redshift.  This is **only used for determining rescaling amplitude**; i.e. this option has no effect if `ZD_qPLT_rescale` is not set.  This code does not compute growth functions; `ZD_Pk_sigma` controls the power spectrum normalization.
+The output redshift.  This is **only used for determining rescaling amplitude, and for f_NL**; i.e. this option has no effect if neither `ZD_qPLT_rescale` nor `ZD_f_NL` are set.  This code does not compute growth functions; `ZD_Pk_sigma` controls the power spectrum normalization.
 
 `ICFormat`: *string*  
 Valid options are: `RVZel`, `RVdoubleZel`, or `Zeldovich`.

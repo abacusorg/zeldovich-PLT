@@ -34,11 +34,14 @@ Parameters::Parameters(char *inputfile): Header() {
     strcpy(PLT_filename,""); // Legal default
     qPLTrescale = 0; // Legal default
     PLT_target_z = 0.; // Legal default, probably don't want!
+    f_NL = 0.;  // Legal default; no primordial non-Gaussianity
     k_cutoff = 1.; // Legal default (corresponds to k_nyquist)
     strcpy(ICFormat,""); // Illegal default
     AllowDirectIO = 0;  // Legal default for most cases
     version = -1;  // All new ICs should use verison 2 (default), but version 1 is available for backwards compatibility
     CornerModes = 0;  // Legal default (no corner modes)
+    n_s = 1;  // Legal default (only used for f_NL)
+    Omega_M = 1.0;  // Legal default (only used for f_NL)
     
     // Read the paramater file values
     register_vars();
@@ -84,6 +87,9 @@ void Parameters::register_vars(void) {
     installscalar("ZD_qPLT_rescale",qPLTrescale,DONT_CARE);
     installscalar("ZD_PLT_target_z",PLT_target_z,DONT_CARE);
     installscalar("ZD_k_cutoff",k_cutoff,DONT_CARE);
+    installscalar("ZD_f_NL",f_NL,DONT_CARE);
+    installscalar("ZD_n_s",n_s,DONT_CARE);
+    installscalar("Omega_M",Omega_M,DONT_CARE);
     installscalar("ICFormat",ICFormat,MUST_DEFINE);
     installscalar("AllowDirectIO",AllowDirectIO,DONT_CARE);
     installscalar("ZD_Version",version,DONT_CARE);
@@ -163,6 +169,17 @@ int Parameters::setup() {
     
     if(qonemode)
         fprintf(stderr,"one_mode: %d, %d, %d\n",one_mode[0],one_mode[1],one_mode[2]);
+
+    if(f_NL != 0.){
+        fprintf(stderr,
+            "Generating local primordial non-Gaussianity, with parameters:\n"
+            " - ZD_f_NL = %g\n"
+            " - ZD_n_s = %g\n"
+            " - Omega_M = %g\n"
+            " - InitialRedshift = %g\n",
+            f_NL, n_s, Omega_M, z_initial
+            );
+    }
     
     return 0;
 }

@@ -54,6 +54,7 @@ BlockArray& array, Parameters& param) {
     // this is simply the displacement field.  However, this does happen
     // to be v/H, which is correct for the redshift-space displacement in EdS
     norm = 1.0; densitynorm = 1.0;
+    dens = 0.;
     
     // We may also need to apply an f_growth factor to the velocities
     // from the addition of a smooth, non-clustering background component
