@@ -1,5 +1,7 @@
 # zeldovich-PLT
 
+[![Tests](https://github.com/abacusorg/zeldovich-PLT/actions/workflows/tests.yaml/badge.svg)](https://github.com/abacusorg/zeldovich-PLT/actions/workflows/tests.yaml)
+
 ## Authors
 Daniel Eisenstein & Lehman Garrison
 
