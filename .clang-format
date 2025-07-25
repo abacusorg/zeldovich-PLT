@@ -32,4 +32,5 @@ Standard: c++17
 
 # Waiting on this for #pragma omp alignment
 # https://reviews.llvm.org/D92753?id=309896
+# or https://github.com/llvm/llvm-project/pull/139750
 # IndentPragmas: true
