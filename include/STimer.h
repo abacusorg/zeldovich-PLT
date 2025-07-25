@@ -19,7 +19,7 @@ public:
 
     int timeron;
     struct timespec timer;
-    
+
 private:
     struct timespec tstart;
 };

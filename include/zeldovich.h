@@ -5,7 +5,7 @@
 /* v1.0 -- Initial version
 
 v1.1 -- Fixed critical bug in Box-Muller implementation.
-Fixed minor bug in spline_function initialization that was causing 
+Fixed minor bug in spline_function initialization that was causing
 crashes under Linux.
 
 v1.2 -- Added feature to output only one XY slab (at a chosen z)
@@ -17,7 +17,8 @@ v1.4-- Changed output to match input specification for abacus
 
 v1.5-- Changed standard random call to mersene twister from the GSL
 
-v1.6-- Support for "oversampled" simulations (same modes at different PPD) via the k_cutoff option
+v1.6-- Support for "oversampled" simulations (same modes at different PPD) via the
+k_cutoff option
 
 v1.7-- Support for PLT eigenmodes and rescaling
 
