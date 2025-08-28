@@ -24,7 +24,7 @@ jobs:
       run: meson setup builddir -DDISK=${{ matrix.disk }} -Dwerror=true -Db_sanitize=address,undefined
     
     - name: Compile
-      run: meson compile -C builddir
+      run: meson compile -C builddir -v
     
     - name: Run
       env:
