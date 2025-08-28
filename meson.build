@@ -44,5 +44,5 @@ exe = executable(
     include_directories: inc,
     dependencies: dep,
     install: true,
-    install_rpath: '$ORIGIN/../lib64',
+    install_rpath: '$ORIGIN/../lib64:$ORIGIN/../lib',
 )
