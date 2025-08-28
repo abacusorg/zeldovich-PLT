@@ -3,23 +3,31 @@
 
 #include <stdio.h>
 #include <string>
+#include <filesystem>
+#include <vector>
+#include <unordered_map>
+
+#include "detail/phDriver.hh"
+
+namespace fs = std::filesystem;
 
 #define MUST_DEFINE true
-#define DONT_CARE   false
+#define DONT_CARE false
 
 class HeaderStream {
 public:
-    HeaderStream(std::string fn);
+    HeaderStream(const fs::path &fn);
     virtual ~HeaderStream(void);
 
     void OpenForRead(void);
     void Close(void);
     void SkipHeader(void);
+    static size_t SkipHeaderFromFP(FILE *);
     void ReadHeader(void);
 
     void FinalizeHeader(void);
 
-    std::string name;
+    fs::path name;
     char *buffer;
     size_t bufferlength;
     FILE *fp;
@@ -28,12 +36,12 @@ private:
     void GetHeaderLength(void);
 };
 
-void OpenStreamForWrite(std::ofstream &stream, std::string fn, bool overwrite);
-FILE *OpenForWrite(std::string fn, bool overwrite);
-void WriteHStream(FILE *fp, std::string m);
-void WriteHStream(FILE *fp, std::string m, std::string pre);
+void OpenStreamForWrite(std::ofstream& stream, const fs::path &fn, bool overwrite);
+FILE* OpenForWrite(const fs::path &fn, bool overwrite);
+void WriteHStream(FILE *fp, const std::string &m);
+void WriteHStream(FILE *fp, const std::string &m, const std::string &pre);
 void WriteHStream(FILE *fp, HeaderStream &in);
-void WriteHStream(FILE *fp, HeaderStream &in, std::string pre);
+void WriteHStream(FILE *fp, HeaderStream &in, const std::string &pre);
 void FinalizeHeader(FILE *fout);
 
 class phDriver;
@@ -49,42 +57,40 @@ public:
 
     // install a scalar
     template <typename T>
-    void installscalar(std::string name, T var, bool must_define);
-
-    void installscalar(std::string name, int &var, bool must_define);
-
-    void installscalar(std::string name, float &var, bool must_define);
-
-    void installscalar(std::string name, double &var, bool must_define);
-
-    void installscalar(std::string name, long long int &var, bool must_define);
-
-    void installscalar(std::string name, char *var, bool must_define);
+    void installscalar(const std::string &name, T& var, bool must_define);
 
     // Install a vector
     template <typename T>
-    void installvector(std::string name, T *var, int len, int stride, bool must_define);
-
-    void
-    installvector(std::string name, int *var, int len, int stride, bool must_define);
-
-    void
-    installvector(std::string name, float *var, int len, int stride, bool must_define);
-
-    void
-    installvector(std::string name, double *var, int len, int stride, bool must_define);
-
-    void installvector(
-       std::string name, long long int *var, int len, int stride, bool must_define
-    );
-
-    void installvector(
-       std::string name, std::string *var, int len, int stride, bool must_define
-    );
+    void installvector(const std::string &name, std::vector<T> &var, bool must_define, size_t maxlen = 1024);
 
     void ReadHeader(HeaderStream &in);
 
 private:
     phDriver *phdriver;
+
+    std::unordered_map<
+        std::string, 
+        std::variant<
+            std::vector<int> *,
+            std::vector<double> *,
+            std::vector<std::string> *,
+            std::vector<fs::path> *
+        >
+    > vectors;
+
+    void resize_vectors(void);
 };
-#endif  // __PARSEHEADER_HH__
+
+template<typename T>
+inline void ParseHeader::installscalar(const std::string &name, T &var, bool must_define) {
+    phdriver->InstallSym(name, &var, 1, 0, must_define);
+}
+
+template <typename T>
+inline void ParseHeader::installvector(const std::string &name, std::vector<T> &var, bool must_define, size_t maxlen) {
+    var.resize(maxlen);
+    phdriver->InstallSym(name, var.data(), maxlen, 1, must_define);
+    vectors[name] = &var;  // will resize to the final length after parsing
+}
+
+#endif // __PARSEHEADER_HH__

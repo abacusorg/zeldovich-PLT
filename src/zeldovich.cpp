@@ -11,6 +11,7 @@
 #include <iostream>
 #include <omp.h>
 #include <time.h>
+#include <filesystem>
 
 #include "fftw3.h"
 
@@ -18,12 +19,13 @@
 #include "pcg-rng/pcg_random.hpp"
 
 #include "block_array.h"
-#include "header.h"
 #include "output.h"
 #include "parameters.h"
 #include "power_spectrum.h"
 #include "spline_function.h"
 #include "zeldovich.h"
+
+namespace fs = std::filesystem;
 
 static double __dcube;
 #define CUBE(a) ((__dcube = (a)) == 0.0 ? 0.0 : __dcube * __dcube * __dcube)
@@ -40,15 +42,14 @@ void Setup_FFTW(int n, int plan_forward) {
     STimer FFTplanning;
 
     FFTplanning.Start();
-    char wisdom_file[1024];
+    fs::path wisdom_file("fftw_zeldovich.wisdom");
     int wisdom_exists;
-    sprintf(wisdom_file, "fftw_zeldovich.wisdom");
     // TODO: Where to put this file?  param.output_dir?  Or in the repository?
     // Currently in the repository
-    wisdom_exists = fftw_import_wisdom_from_filename(wisdom_file);
-    fprintf(
+    wisdom_exists = fftw_import_wisdom_from_filename(wisdom_file.c_str());
+    fmt::print(
        stderr,
-       "FFTW Wisdom import from file \"%s\" returned %d (%s).\n",
+       "FFTW Wisdom import from file \"{}\" returned {:d} ({:s}).\n",
        wisdom_file,
        wisdom_exists,
        wisdom_exists == 1 ? "success" : "failure"
@@ -65,12 +66,12 @@ void Setup_FFTW(int n, int plan_forward) {
     }
     free(p);
     // delete []p;
-    ret = fftw_export_wisdom_to_filename(wisdom_file);
-    fprintf(
-       stderr, "FFTW Wisdom export to file \"%s\" returned %d.\n", wisdom_file, ret
+    ret = fftw_export_wisdom_to_filename(wisdom_file.c_str());
+    fmt::print(
+       stderr, "FFTW Wisdom export to file \"{}\" returned {:d}.\n", wisdom_file, ret
     );
     FFTplanning.Stop();
-    fprintf(stderr, "Creating FFTW plans done in %f sec.\n", FFTplanning.Elapsed());
+    fmt::print(stderr, "Creating FFTW plans done in {:f} sec.\n", FFTplanning.Elapsed());
 }
 
 // TODO: This handling of the memory allocation required for plans
@@ -79,12 +80,12 @@ void Setup_FFTW(int n, int plan_forward) {
 // And we're trusting that every 2-d plane ends up aligned, although
 // this has a better chance of being ok because we require an even PPD.
 
-void Inverse1dFFT(Complx *p, int n) {
+void Inverse1dFFT(Complx *p) {
     // Given a pointer to a 1d complex vector, packed as p[n].
     // Do the 1d inverse FFT in place
     fftw_execute_dft(plan1d, (fftw_complex *) p, (fftw_complex *) p);
 }
-void Inverse2dFFT(Complx *p, int n) {
+void Inverse2dFFT(Complx *p) {
     // Given a pointer to a 2d complex array, contiguously packed as p[n][n].
     // Do the 2d inverse FFT in place
     fftw_execute_dft(plan2d, (fftw_complex *) p, (fftw_complex *) p);
@@ -105,17 +106,17 @@ void InverseFFT_Yonly(Complx *p, int n) {
     for (j = 0; j < n; j++) {
         // We will load one row at a time
         for (k = 0; k < n; k++) tmp[k] = p[k * n + j];
-        Inverse1dFFT(tmp, n);
+        Inverse1dFFT(tmp);
         for (k = 0; k < n; k++) p[k * n + j] = tmp[k];
     }
     free(tmp);
     // delete []tmp;
 }
 
-void Forward1dFFT(Complx *p, int n) {
+void Forward1dFFT(Complx *p) {
     fftw_execute_dft(plan1d_forward, (fftw_complex *) p, (fftw_complex *) p);
 }
-void Forward2dFFT(Complx *p, int n) {
+void Forward2dFFT(Complx *p) {
     fftw_execute_dft(plan2d_forward, (fftw_complex *) p, (fftw_complex *) p);
 }
 void ForwardFFT_Yonly(Complx *p, int n) {
@@ -127,7 +128,7 @@ void ForwardFFT_Yonly(Complx *p, int n) {
     for (j = 0; j < n; j++) {
         // We will load one row at a time
         for (k = 0; k < n; k++) tmp[k] = p[k * n + j];
-        Forward1dFFT(tmp, n);
+        Forward1dFFT(tmp);
         for (k = 0; k < n; k++) p[k * n + j] = tmp[k];
     }
     free(tmp);
@@ -437,7 +438,7 @@ void LoadPlane(
             }
 
             if (!just_density) {
-                // fprintf(stderr,"%d %d %d   %d %d %d   %f   %f %f\n",
+                // fmt::print(stderr,"{:d} {:d} {:d}   {:d} {:d} {:d}   {:f}   {:f} {:f}\n",
                 // x,y,z, kx,ky,kz, k2, real(D), imag(D));
                 // H = F = D = 0.0;   // Test that the Hermitian aspects work
                 // Now A = D+iF and B = G+iH.
@@ -471,7 +472,7 @@ void LoadPlane(
     }  // End the x-z loops
 
     if (ver != 1) {
-        // printf("Made %lu calls (nskip at end %lu)\n", (uint64_t)
+        // fmt::print("Made {:d} calls (nskip at end {:d})\n", (uint64_t)
         // (Pk.v2rng[y]-checkpoint), nskip);
         Pk.v2rng[y].advance(2 * nskip);
         assert(Pk.v2rng[y] - checkpoint == 2 * MAX_PPD * MAX_PPD);
@@ -509,7 +510,7 @@ void LoadPlane(
         InverseFFT_Yonly(&(AYZX(slabHer, a, yresHer, 0, 0)), ppd);
     }
     // fft.Stop();
-    // printf("FFT fraction %f\n", fft.Elapsed()/(cpu.Elapsed()+fft.Elapsed()));
+    // fmt::print("FFT fraction {:f}\n", fft.Elapsed()/(cpu.Elapsed()+fft.Elapsed()));
     return;
 }
 
@@ -553,7 +554,7 @@ void ZeldovichZ(
 
     STimer compute_planes, storing;
     //
-    fprintf(stderr, "Looping over Y: ");
+    fmt::print(stderr, "Looping over Y: ");
     for (int yblock = 0; yblock < array.numblock / 2; yblock++) {
         if (input_phi_array) {
 #pragma omp parallel for schedule(dynamic, 1)
@@ -565,7 +566,7 @@ void ZeldovichZ(
 
         // We're going to do each pair of Y slabs separately.
         // Load the deltas and do the FFTs for each pair of planes
-        fprintf(stderr, "..");
+        fmt::print(stderr, "..");
         fflush(stderr);
         compute_planes.Start();
 #pragma omp parallel for schedule(dynamic, 1)
@@ -589,10 +590,10 @@ void ZeldovichZ(
     free(slabHer);
     free(slab);
     free(input_phi_slab);
-    fprintf(stderr, "\n");
-    fprintf(
+    fmt::print(stderr, "\n");
+    fmt::print(
        stderr,
-       "Computing, Saving the Planes took %f %f sec\n",
+       "Computing, Saving the Planes took {:f} {:f} sec\n",
        compute_planes.Elapsed(),
        storing.Elapsed()
     );
@@ -607,7 +608,7 @@ void ZeldovichZ(
        [(int64_t) (_x)                                                   \
         + array.ppd * ((_y) + array.ppd * ((_a) + array.narray * (_z)))]
 
-void ZeldovichXY(BlockArray &array, Parameters &param, FILE *output) {
+void ZeldovichXY(BlockArray &array, Parameters &param) {
     // Do the Y & X inverse FFT and output the results.
     // Do this one Z slab at a time; try to load the data in order.
     // Try to write the output file in z order
@@ -621,7 +622,7 @@ void ZeldovichXY(BlockArray &array, Parameters &param, FILE *output) {
 #pragma omp parallel for schedule(static)
     for (int64_t i = 0; i < len; i++) { slab[i] = Complx(0., 0.); }
 
-    fprintf(stderr, "Looping over Z: ");
+    fmt::print(stderr, "Looping over Z: ");
     STimer loading, writing, fft;
 
     for (int zblock = 0; zblock < array.numblock; zblock++) {
@@ -629,7 +630,7 @@ void ZeldovichXY(BlockArray &array, Parameters &param, FILE *output) {
         // Load the slab back in.
         // Can't openMP an I/O loop.
         loading.Start();
-        fprintf(stderr, ".");
+        fmt::print(stderr, ".");
 #pragma omp parallel for schedule(dynamic, 1)
         for (int yblock = 0; yblock < array.numblock; yblock++) {
             array.LoadBlock(yblock, zblock, slab);
@@ -652,7 +653,7 @@ void ZeldovichXY(BlockArray &array, Parameters &param, FILE *output) {
         for (int a = 0; a < array.narray; a++) {
 #pragma omp parallel for schedule(dynamic, 1)
             for (int zres = 0; zres < array.block; zres++) {
-                Inverse2dFFT(&(AZYX(slab, a, zres, 0, 0)), array.ppd);
+                Inverse2dFFT(&(AZYX(slab, a, zres, 0, 0)));
             }
         }
         fft.Stop();
@@ -682,10 +683,10 @@ void ZeldovichXY(BlockArray &array, Parameters &param, FILE *output) {
         writing.Stop();
     }  // End zblock for loop
     free(slab);
-    fprintf(stderr, "\n");
-    fprintf(
+    fmt::print(stderr, "\n");
+    fmt::print(
        stderr,
-       "Loading, FFTs, Writing took %f %f %f seconds\n",
+       "Loading, FFTs, Writing took {:f} {:f} {:f} seconds\n",
        loading.Elapsed(),
        fft.Elapsed(),
        writing.Elapsed()
@@ -708,14 +709,14 @@ void ZeldovichXY_Phi(BlockArray &array, Parameters &param) {
 #pragma omp parallel for schedule(static)
     for (int64_t i = 0; i < len; i++) { slab[i] = Complx(0., 0.); }
 
-    fprintf(stderr, "Looping over Z: ");
+    fmt::print(stderr, "Looping over Z: ");
     STimer loading, fnl_time, fft, storing;
 
     for (int zblock = 0; zblock < array.numblock; zblock++) {
         // We'll do one Z slab at a time
         // Load the slab back in.
         loading.Start();
-        fprintf(stderr, ".");
+        fmt::print(stderr, ".");
 #pragma omp parallel for schedule(dynamic, 1)
         for (int yblock = 0; yblock < array.numblock; yblock++) {
             array.LoadBlock(yblock, zblock, slab);
@@ -738,7 +739,7 @@ void ZeldovichXY_Phi(BlockArray &array, Parameters &param) {
         for (int a = 0; a < array.narray; a++) {
 #pragma omp parallel for schedule(dynamic, 1)
             for (int zres = 0; zres < array.block; zres++) {
-                Inverse2dFFT(&(AZYX(slab, a, zres, 0, 0)), array.ppd);
+                Inverse2dFFT(&(AZYX(slab, a, zres, 0, 0)));
             }
         }
         fft.Stop();
@@ -761,12 +762,12 @@ void ZeldovichXY_Phi(BlockArray &array, Parameters &param) {
         for (int a = 0; a < array.narray; a++) {
 #pragma omp parallel for schedule(dynamic, 1)
             for (int zres = 0; zres < array.block; zres++) {
-                Forward2dFFT(&(AZYX(slab, a, zres, 0, 0)), array.ppd);
+                Forward2dFFT(&(AZYX(slab, a, zres, 0, 0)));
             }
         }
 
         loading.Start();
-        fprintf(stderr, ".");
+        fmt::print(stderr, ".");
 #pragma omp parallel for schedule(dynamic, 1)
         for (int yblock = 0; yblock < array.numblock; yblock++) {
             // We have slab[zres][y][x] and will store it as [y][zres][x]
@@ -776,10 +777,10 @@ void ZeldovichXY_Phi(BlockArray &array, Parameters &param) {
 
     }  // End zblock for loop
     free(slab);
-    fprintf(stderr, "\n");
-    fprintf(
+    fmt::print(stderr, "\n");
+    fmt::print(
        stderr,
-       "Loading, FFTs, f_NL, storing took %.2f %.2f %.2f %.2f seconds\n",
+       "Loading, FFTs, f_NL, storing took {:.2f} {:.2f} {:.2f} {:.2f} seconds\n",
        loading.Elapsed(),
        fft.Elapsed(),
        fnl_time.Elapsed(),
@@ -791,7 +792,7 @@ void ZeldovichXY_Phi(BlockArray &array, Parameters &param) {
 // ===============================================================
 
 void load_eigmodes(Parameters &param) {
-    fprintf(stderr, "Using PLT eigenmodes.\n");
+    fmt::print(stderr, "Using PLT eigenmodes.\n");
     // The eigvecs file consists of the ppd (32-bit int)
     // followed by PPDxPPDx(PPD/2+1)*4 doubles
     std::ifstream eigf;
@@ -846,27 +847,24 @@ const int PART = -1;
 
 int main(int argc, char *argv[]) {
     if (argc != 2) {
-        fprintf(stderr, "Usage: %s param_file\n", argv[0]);
+        fmt::print(stderr, "Usage: {:s} param_file\n", argv[0]);
         exit(1);
     }
 
-    if (PART > 0) { fprintf(stderr, "This is zeldovich part %d\n", PART); }
+    if (PART > 0) { fmt::print(stderr, "This is zeldovich part {:d}\n", PART); }
 
     STimer totaltime;
     totaltime.Start();
 
-    FILE *output;
     double memory;
     Parameters param(argv[1]);
 
     PowerSpectrum Pk(10000, param);
-    if (strlen(param.Pk_filename) > 0) {
+    if (!param.Pk_filename.empty()) {
         if (Pk.InitFromFile(param.Pk_filename, param) != 0) return 1;
     } else {
         if (Pk.InitFromPowerLaw(param.Pk_powerlaw_index, param) != 0) return 1;
     }
-
-    if (!Pk.is_powerlaw) param.append_file_to_comments(param.Pk_filename);
 
     // param.print(stdout);   // Inform the command line user
     //  Two arrays for dens,x,y,z, two more for vx,vy,vz
@@ -891,32 +889,32 @@ int main(int argc, char *argv[]) {
 #endif
 
 #ifdef DISK
-    fprintf(stderr, "Compiled with -DDISK; blocks will be buffered on disk.\n");
-    fprintf(stderr, "Total (out-of-core) memory usage: %5.3f GiB\n", memory);
-    fprintf(
+    fmt::print(stderr, "Compiled with -DDISK; blocks will be buffered on disk.\n");
+    fmt::print(stderr, "Total (out-of-core) memory usage: {:5.3f} GiB\n", memory);
+    fmt::print(
        stderr,
-       "Two slab (in-core) memory usage: %5.3f GiB\n",
+       "Two slab (in-core) memory usage: {:5.3f} GiB\n",
        memory / param.numblock * 2.0 + memory / param.numblock / param.numblock
           + _outbufferGiB
     );  // extra from StoreBlock_tmp
-    fprintf(
+    fmt::print(
        stderr,
-       "Block file size: %5.3f GiB\n",
+       "Block file size: {:5.3f} GiB\n",
        (memory * narray / mem_narray) / param.numblock / param.numblock
     );
 #else
-    fprintf(stderr, "Not compiled with -DDISK; whole problem will reside in memory.\n");
-    fprintf(
+    fmt::print(stderr, "Not compiled with -DDISK; whole problem will reside in memory.\n");
+    fmt::print(
        stderr,
-       "Total memory usage: %5.3f GiB\n",
+       "Total memory usage: {:5.3f} GiB\n",
        memory + memory / param.numblock * 2.0 + _outbufferGiB
     );  // extra is from 2 blocks in ZeldovichZ
-    fprintf(
-       stderr, "Two slab memory usage: %5.3f GiB\n", memory / param.numblock * 2.0
+    fmt::print(
+       stderr, "Two slab memory usage: {:5.3f} GiB\n", memory / param.numblock * 2.0
     );
-    fprintf(
+    fmt::print(
        stderr,
-       "Block size: %5.3f GiB\n",
+       "Block size: {:5.3f} GiB\n",
        (memory * narray / mem_narray) / param.numblock / param.numblock
     );
 #endif
@@ -924,9 +922,9 @@ int main(int argc, char *argv[]) {
     if (param.qPLT) { load_eigmodes(param); }
 
     if (param.k_cutoff != 1) {
-        fprintf(
+        fmt::print(
            stderr,
-           "Using k_cutoff = %f (effective ppd = %d)\n",
+           "Using k_cutoff = {:f} (effective ppd = {:d})\n",
            param.k_cutoff,
            (int) (param.ppd / param.k_cutoff + .5)
         );
@@ -935,21 +933,19 @@ int main(int argc, char *argv[]) {
     int quickdelete = 1;
 
     totaltime.Stop();
-    fprintf(stderr, "Preamble took %f seconds\n", totaltime.Elapsed());
+    fmt::print(stderr, "Preamble took {:f} seconds\n", totaltime.Elapsed());
     totaltime.Start();
     Setup_FFTW(param.ppd, param.f_NL != 0.);
 
     totaltime.Stop();
-    fprintf(stderr, "Time so far: %f seconds\n", totaltime.Elapsed());
+    fmt::print(stderr, "Time so far: {:f} seconds\n", totaltime.Elapsed());
     totaltime.Start();
-    output = 0;  // Current implementation doesn't use user-provided output
 
 #ifndef NOPART1
     BlockArray *phi_array = NULL;
     if (param.f_NL != 0.) {
-        fprintf(stderr, "Generating phi field\n");
-        char phi_dir[1030];
-        sprintf(phi_dir, "%s/phi", param.output_dir);
+        fmt::print(stderr, "Generating phi field\n");
+        fs::path phi_dir = param.output_dir / "phi";
         phi_array = new BlockArray(
            param.ppd, param.numblock, 1, phi_dir, param.AllowDirectIO, 0, PART
         );
@@ -957,7 +953,7 @@ int main(int argc, char *argv[]) {
         ZeldovichZ(*phi_array, param, Pk, 1, NULL);
 
         totaltime.Stop();
-        fprintf(stderr, "Time so far: %f seconds\n", totaltime.Elapsed());
+        fmt::print(stderr, "Time so far: {:f} seconds\n", totaltime.Elapsed());
         totaltime.Start();
 
         ZeldovichXY_Phi(*phi_array, param);
@@ -976,47 +972,45 @@ int main(int argc, char *argv[]) {
     delete phi_array;
     phi_array = NULL;
 
-    fprintf(stderr, "Wrote %d files\n", array.files_written);
+    fmt::print(stderr, "Wrote {:d} files\n", array.files_written);
     totaltime.Stop();
-    fprintf(stderr, "Time so far: %f seconds\n", totaltime.Elapsed());
+    fmt::print(stderr, "Time so far: {:f} seconds\n", totaltime.Elapsed());
     totaltime.Start();
 #endif
 
 #ifndef NOPART2
-    output = 0;  // Current implementation doesn't use user-provided output
-    ZeldovichXY(array, param, output);
+    ZeldovichXY(array, param);
     totaltime.Stop();
-    fprintf(stderr, "Time so far: %f seconds\n", totaltime.Elapsed());
+    fmt::print(stderr, "Time so far: {:f} seconds\n", totaltime.Elapsed());
     totaltime.Start();
 
-    fprintf(
+    fmt::print(
        stderr,
-       "The rms density variation of the pixels is %f\n",
+       "The rms density variation of the pixels is {:f}\n",
        sqrt(density_variance / CUBE(param.ppd))
     );
-    fprintf(
+    fmt::print(
        stderr,
-       "This could be compared to the P(k) prediction of %f\n",
+       "This could be compared to the P(k) prediction of {:f}\n",
        Pk.sigmaR(param.separation / 4.0) * pow(param.boxsize, 1.5)
     );
 
     if (param.qdensity != 2) {
-        fprintf(
+        fmt::print(
            stderr,
-           "The maximum component-wise displacements are (%g, %g, %g), same units as BoxSize.\n",
+           "The maximum component-wise displacements are ({:g}, {:g}, {:g}), same units as BoxSize.\n",
            max_disp[0],
            max_disp[1],
            max_disp[2]
         );
-        fprintf(
+        fmt::print(
            stderr,
-           "For Abacus' 2LPT implementation to work (assuming FINISH_WAIT_RADIUS = 1),\n\tthis implies a maximum CPD of %d\n",
+           "For Abacus' 2LPT implementation to work (assuming FINISH_WAIT_RADIUS = 1),\n\tthis implies a maximum CPD of {:d}\n",
            (int) (param.boxsize / (2 * fabs(max_disp[2])))
         );  // The slab direction is z in this code
     }
-    // fclose(output);
     totaltime.Stop();
-    fprintf(stderr, "Time so far: %f seconds\n", totaltime.Elapsed());
+    fmt::print(stderr, "Time so far: {:f} seconds\n", totaltime.Elapsed());
     totaltime.Start();
 
     TeardownOutput();
@@ -1026,9 +1020,9 @@ int main(int argc, char *argv[]) {
     // delete[] eig_vecs;
 
     totaltime.Stop();
-    fprintf(
+    fmt::print(
        stderr,
-       "zeldovich took %.4g sec for ppd %lu ==> %.3g Mpart/sec\n",
+       "zeldovich took {:.4g} sec for ppd {:d} ==> {:.3g} Mpart/sec\n",
        totaltime.Elapsed(),
        param.ppd,
        param.np / 1e6 / totaltime.Elapsed()

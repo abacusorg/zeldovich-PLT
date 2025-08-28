@@ -5,13 +5,18 @@
 #include <libgen.h>
 #include <sys/stat.h>
 #include <unistd.h>
-
 #include <errno.h>
 #include <limits.h> /* PATH_MAX */
 #include <mutex>
 #include <string.h>
+#include <filesystem>
+
+#include "fmt/base.h"
+#include "fmt/format.h"
 
 #include "output.h"
+
+namespace fs = std::filesystem;
 
 #define YX(_slab, _y, _x) _slab[(_x) + array.ppd * (_y)]
 
@@ -104,9 +109,9 @@ void WriteParticlesSlab(
                 //            WRAP(pos[1]);
                 //            WRAP(pos[2]);
                 if (param.qascii) {
-                    fprintf(
+                    fmt::print(
                        output,
-                       "%d %d %d %f %f %f %f %f %f %f\n",
+                       "{:d} {:d} {:d} {:f} {:f} {:f} {:f} {:f} {:f} {:f}\n",
                        x,
                        y,
                        z,
@@ -172,9 +177,9 @@ void WriteParticlesSlab(
                         }
 
                         default:
-                            fprintf(
+                            fmt::print(
                                stderr,
-                               "Error: unknown ICFormat \"%s\". Aborting.\n",
+                               "Error: unknown ICFormat \"{:s}\". Aborting.\n",
                                param.ICFormat
                             );
                             exit(1);
@@ -200,10 +205,9 @@ void WriteParticlesSlab(
     assert(i == param.ppd * param.ppd);
 
     if (!just_density) {
-        char fn[1080];
-        sprintf(fn, "%s/ic_%ld", param.output_dir, z * param.cpd / param.ppd);
-        // fprintf(stderr,"z: %d goes goes to ic_%d /n", z, z*param.cpd/param.ppd);
-        output = fopen(fn, "ab");
+        fs::path fn = param.output_dir / fmt::format("ic_{:d}", z * param.cpd / param.ppd);
+        // fmt::print(stderr,"z: {:d} goes goes to ic_{:d} /n", z, z*param.cpd/param.ppd);
+        output = fopen(fn.c_str(), "ab");
         fwrite(output_tmp, sizeof_outputtype, param.ppd * param.ppd, output);
         fclose(output);
     }
@@ -230,32 +234,44 @@ void WriteParticlesSlab(
 }
 
 void SetupOutputDir(Parameters &param) {
-    CleanDirectory(param.output_dir);
-    CreateDirectories(param.output_dir);
+    // remove files named ic_* and zeldovich.* from param.output_dir
+    if (fs::exists(param.output_dir)) {
+        for (const auto& entry : fs::directory_iterator(param.output_dir)) {
+            if (entry.is_regular_file()) {
+                std::string filename = entry.path().filename().string();
+                if ((filename.compare(0, 3, "ic_") == 0) ||
+                    (filename.compare(0, 10, "zeldovich.") == 0)) {
+                    fs::remove(entry.path());
+                }
+            }
+        }
+    }
+
+    fs::create_directories(param.output_dir);
 }
 
 // Returns GiB size of allocated buffer
 double InitOutputBuffers(Parameters &param) {
     if (param.qdensity != 2) {
-        if (strcmp(param.ICFormat, "RVdoubleZel") == 0) {
+        if (param.ICFormat == "RVdoubleZel") {
             param_icformat    = OUTPUT_RVDOUBLEZEL;
             output_tmp        = new RVdoubleZelParticle[param.ppd * param.ppd];
             sizeof_outputtype = sizeof(RVdoubleZelParticle);
-        } else if (strcmp(param.ICFormat, "RVZel") == 0) {
+        } else if (param.ICFormat == "RVZel") {
             param_icformat    = OUTPUT_RVZEL;
             output_tmp        = new RVZelParticle[param.ppd * param.ppd];
             sizeof_outputtype = sizeof(RVZelParticle);
-        } else if (strcmp(param.ICFormat, "Zeldovich") == 0) {
+        } else if (param.ICFormat == "Zeldovich") {
             param_icformat    = OUTPUT_ZEL;
             output_tmp        = new ZelParticle[param.ppd * param.ppd];
             sizeof_outputtype = sizeof(ZelParticle);
-        } else if (strcmp(param.ICFormat, "ZelSimple") == 0) {
+        } else if (param.ICFormat == "ZelSimple") {
             param_icformat    = OUTPUT_ZEL_SIMPLE;
             output_tmp        = new ZelSimpleParticle[param.ppd * param.ppd];
             sizeof_outputtype = sizeof(ZelSimpleParticle);
         } else {
-            fprintf(
-               stderr, "Error: unknown ICFormat \"%s\". Aborting.\n", param.ICFormat
+            fmt::print(
+               stderr, "Error: unknown ICFormat \"{:s}\". Aborting.\n", param.ICFormat
             );
             exit(1);
         }
@@ -264,11 +280,9 @@ double InitOutputBuffers(Parameters &param) {
     }
 
     if (param.qdensity) {
-        char fn[256];
-        sprintf(fn, param.density_filename, param.ppd);
-        char path[1300];
-        sprintf(path, "%s/%s", param.output_dir, fn);
-        densfp = fopen(path, "wb");
+        fs::path path = param.output_dir / fmt::format(fmt::runtime(param.density_filename.string()), param.ppd);
+
+        densfp = fopen(path.c_str(), "wb");
         assert(densfp != NULL);
         densoutput_tmp = new float[param.ppd * param.ppd];
     }
@@ -302,93 +316,11 @@ void TeardownOutput() {
         fclose(densfp);
     }
 
-    fprintf(
+    fmt::print(
        stderr,
-       "WriteParticlesSlab took %.3g sec to write %.3g MB ==> %.3g MB/sec\n",
+       "WriteParticlesSlab took {:.3g} sec to write {:.3g} MB ==> {:.3g} MB/sec\n",
        outtimer.Elapsed(),
        output_bytes_written / 1e6,
        output_bytes_written / 1e6 / outtimer.Elapsed()
     );
-}
-
-// Remove files named ic_* and zeldovich.* from the current directory
-int CleanDirectory(const char *path) {
-    DIR *d          = opendir(path);
-    size_t path_len = strlen(path);
-    int r           = -1;
-
-    if (d) {
-        struct dirent *p;
-
-        r = 0;
-
-        while (!r && (p = readdir(d))) {
-            int r2 = -1;
-            char *buf;
-            size_t len;
-
-            /* Only process our target file names */
-            if (strncmp(p->d_name, "ic_", 3) && strncmp(p->d_name, "zeldovich.", 10)) {
-                continue;
-            }
-
-            len = path_len + strlen(p->d_name) + 2;
-            buf = (char *) malloc(len);
-            assert(buf != NULL);
-
-            struct stat statbuf;
-
-            snprintf(buf, len, "%s/%s", path, p->d_name);
-
-            if (!lstat(buf, &statbuf)) {  // stat or lstat?
-                if (!S_ISDIR(statbuf.st_mode)) { r2 = unlink(buf); }
-            }
-
-            free(buf);
-
-            r = r2;
-        }
-
-        closedir(d);
-    }
-
-    return r;
-}
-
-// A recursive mkdir function.
-// This is semantically similar to Python's os.makedirs()
-// from https://gist.github.com/JonathonReinhart/8c0d90191c38af2dcadb102c4e202950
-int CreateDirectories(const char *path) {
-    const size_t len = strlen(path);
-    char _path[PATH_MAX];
-    char *p;
-
-    errno = 0;
-
-    /* Copy string so it is mutable */
-    if (len > sizeof(_path) - 1) {
-        errno = ENAMETOOLONG;
-        return -1;
-    }
-    strcpy(_path, path);
-
-    /* Iterate the string */
-    for (p = _path + 1; *p; p++) {
-        if (*p == '/') {
-            /* Temporarily truncate */
-            *p = '\0';
-
-            if (mkdir(_path, S_IRWXU) != 0) {
-                if (errno != EEXIST) return -1;
-            }
-
-            *p = '/';
-        }
-    }
-
-    if (mkdir(_path, S_IRWXU) != 0) {
-        if (errno != EEXIST) return -1;
-    }
-
-    return 0;
 }

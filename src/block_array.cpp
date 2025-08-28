@@ -4,6 +4,11 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <filesystem>
+
+#include "fmt/base.h"
+#include "fmt/format.h"
+#include "fmt/std.h"
 
 #include "STimer.h"
 #include "block_array.h"
@@ -13,11 +18,13 @@
 #include "iolib.cpp"
 #endif
 
+namespace fs = std::filesystem;
+
 BlockArray::BlockArray(
    int _ppd,
    int _numblock,
    int _narray,
-   char *_dir,
+   const fs::path &_dir,
    int _ramdisk,
    int _quickdelete,
    int _part
@@ -27,7 +34,7 @@ BlockArray::BlockArray(
     numblock = _numblock;
     block    = ppd / numblock;
     narray   = _narray;
-    strcpy(TMPDIR, _dir);
+    TMPDIR = _dir;
     assert(ppd % 2 == 0);       // PPD must be even, due to incomplete Nyquist code
     assert(numblock % 2 == 0);  // Number of blocks must be even
     assert(ppd == numblock * block);  // We'd like the blocks to divide evenly
@@ -45,28 +52,9 @@ BlockArray::BlockArray(
 
     if (part != 2) {
         // Make directories for the zeldovich blocks
-        int ret    = mkdir(TMPDIR, 0775);
-        int reason = errno;
-        if (ret != 0 && reason != EEXIST) {
-            fprintf(
-               stderr, "mkdir(\"%s\") failed for reason %s\n", TMPDIR, strerror(reason)
-            );
-            exit(1);
-        }
         for (int yblock = 0; yblock < numblock; yblock++) {
-            char blockdir[1100];
-            sprintf(blockdir, "%s/zeldovich.%1d", TMPDIR, yblock);
-            int ret    = mkdir(blockdir, 0775);
-            int reason = errno;
-            if (ret != 0 && reason != EEXIST) {
-                fprintf(
-                   stderr,
-                   "mkdir(\"%s\") failed for reason %s\n",
-                   blockdir,
-                   strerror(reason)
-                );
-                exit(1);
-            }
+            fs::path blockdir = TMPDIR / fmt::format("zeldovich.{:1d}", yblock);
+            fs::create_directories(blockdir);
         }
     }
 #else
@@ -82,13 +70,13 @@ BlockArray::BlockArray(
     // If there are fewer planes than threads; we're underutilizing the CPU!
     // But it probably only matters for large problem sizes.
     int nthread = omp_get_max_threads();
-    fprintf(stderr, "Using %d OpenMP threads\n", nthread);
+    fmt::print(stderr, "Using {:d} OpenMP threads\n", nthread);
     if (block < nthread && ppd >= 512) {
-        fprintf(
+        fmt::print(
            stderr,
            R"(
-*** Note: the number of particles per block (%d) is fewer than the number of threads (%d),
-    so the CPU will be under-utilized.  You may wish to decrease ZD_NumBlock (%d) if memory
+*** Note: the number of particles per block ({:d}) is fewer than the number of threads ({:d}),
+    so the CPU will be under-utilized.  You may wish to decrease ZD_NumBlock ({:d}) if memory
     constraints allow.
 
 )",
@@ -109,37 +97,26 @@ BlockArray::~BlockArray() {
                     bremove(yblock, zblock);
                 }
             }
-            // Remove the block directory
-            char blockdir[1100];
-            sprintf(blockdir, "%s/zeldovich.%1d", TMPDIR, yblock);
-            int ret    = rmdir(blockdir);
-            int reason = errno;
-            if (ret != 0) {
-                fprintf(
-                   stderr,
-                   "rmdir(\"%s\") failed for reason %s\n",
-                   blockdir,
-                   strerror(reason)
-                );
-                exit(1);
-            }
+            fs::path blockdir = TMPDIR / fmt::format("zeldovich.{:1d}", yblock);
+            fs::remove(blockdir);
         }
         // Remove the TMPDIR if it's empty
-        rmdir(TMPDIR);
+        std::error_code ec;
+        fs::remove(TMPDIR, ec);
     }
 
     double serial_time = wtimer.Elapsed() / omp_get_max_threads();
-    fprintf(
+    fmt::print(
        stderr,
-       "Block IO took %.2f sec to write %.2f GB ==> %.1f MB/sec\n",
+       "Block IO took {:.2f} sec to write {:.2f} GB ==> {:.1f} MB/sec\n",
        serial_time,
        bytes_written / 1e9,
        bytes_written / 1e6 / serial_time
     );
     serial_time = rtimer.Elapsed() / omp_get_max_threads();
-    fprintf(
+    fmt::print(
        stderr,
-       "Block IO took %.2f sec to read %.2f GB ==> %.1f MB/sec\n",
+       "Block IO took {:.2f} sec to read {:.2f} GB ==> {:.1f} MB/sec\n",
        serial_time,
        bytes_read / 1e9,
        bytes_read / 1e6 / serial_time
@@ -151,16 +128,13 @@ BlockArray::~BlockArray() {
 
 #ifdef DISK
 #ifdef DIRECTIO_BROKEN
-void BlockArray::bopen(int yblock, int zblock, const char *mode) {
+void BlockArray::bopen(int yblock, int zblock, const std::string &mode) {
     // DirectIO actually opens and closes the files on demand, so we don't need to open
     // the file here
     assert(yblock >= 0 && yblock < numblock);
     assert(zblock >= 0 && zblock < numblock);
-    char filename[1024];
-    sprintf(
-       filename, "%s/zeldovich.%1d/zeldovich.%1d.%1d", TMPDIR, yblock, yblock, zblock
-    );
-    FILE *outfile = fopen(filename, "a");
+    fs::path filename = TMPDIR / fmt::format("zeldovich.{:1d}/zeldovich.{:1d}.{:1d}", yblock, yblock, zblock);
+    FILE *outfile = fopen(filename.c_str(), "a");
     assert(outfile != NULL);
     fclose(outfile);
 
@@ -189,18 +163,15 @@ void BlockArray::bread(Complx *buffer, size_t num) {
 
 // These routines are for reading blocks on and off disk without DIRECTIO
 
-FILE *BlockArray::bopen(int yblock, int zblock, const char *mode) {
+FILE *BlockArray::bopen(int yblock, int zblock, const std::string &mode) {
     // Set up for reading or writing this block
     assert(yblock >= 0 && yblock < numblock);
     assert(zblock >= 0 && zblock < numblock);
-    char filename[1100];
-    sprintf(
-       filename, "%s/zeldovich.%1d/zeldovich.%1d.%1d", TMPDIR, yblock, yblock, zblock
-    );
+    fs::path filename = TMPDIR / fmt::format("zeldovich.{:1d}/zeldovich.{:1d}.{:1d}", yblock, yblock, zblock);
 
     FILE *fp;
-    fp = fopen(filename, mode);
-    if (fp == NULL) fprintf(stderr, "bad filename: %s\n", filename);
+    fp = fopen(filename.c_str(), mode.c_str());
+    if (fp == NULL) fmt::print(stderr, "bad filename: {}\n", filename);
     assert(fp != NULL);
 
     return fp;
@@ -221,11 +192,8 @@ void BlockArray::bread(FILE *fp, Complx *buffer, size_t num) {
 #endif
 
 void BlockArray::bremove(int yblock, int zblock) {
-    char filename[1100];
-    sprintf(
-       filename, "%s/zeldovich.%1d/zeldovich.%1d.%1d", TMPDIR, yblock, yblock, zblock
-    );
-    remove(filename);
+    fs::path filename = TMPDIR / fmt::format("zeldovich.{:1d}/zeldovich.{:1d}.{:1d}", yblock, yblock, zblock);
+    fs::remove(filename);
 }
 
 void BlockArray::StoreBlock(int yblock, int zblock, Complx *slab) {
@@ -271,7 +239,7 @@ void BlockArray::StoreBlock(int yblock, int zblock, Complx *slab) {
     wtimer.increment(thiswtimer.timer);
     bytes_written += totsize * sizeof(Complx);
     files_written++;
-    // fprintf(stderr, "StoreBlock took %.3g sec to write %.3g MB ==> %.3g MB/sec\n",
+    // fmt::print(stderr, "StoreBlock took {:.3g} sec to write {:.3g} MB ==> {:.3g} MB/sec\n",
     //     wtimer.Elapsed(), totsize/1e6, totsize/1e6/wtimer.Elapsed());
     array_mutex.unlock();
 }
@@ -328,7 +296,7 @@ void BlockArray::LoadBlock(int yblock, int zblock, Complx *slab) {
     array_mutex.lock();
     rtimer.increment(thisrtimer.timer);
     bytes_read += totsize * sizeof(Complx);
-    // fprintf(stderr, "LoadBlock took %.3g sec to read %.3g MB ==> %.3g MB/sec\n",
+    // fmt::print(stderr, "LoadBlock took {:.3g} sec to read {:.3g} MB ==> {:.3g} MB/sec\n",
     //         rtimer.Elapsed(), totsize/1e6, totsize/1e6/rtimer.Elapsed());
     array_mutex.unlock();
     return;
@@ -370,7 +338,7 @@ void BlockArray::StoreBlockForward(int yblock, int zblock, Complx *slab) {
     wtimer.increment(thiswtimer.timer);
     bytes_written += totsize * sizeof(Complx);
     files_written++;
-    // fprintf(stderr, "StoreBlock took %.3g sec to write %.3g MB ==> %.3g MB/sec\n",
+    // fmt::print(stderr, "StoreBlock took {:.3g} sec to write {:.3g} MB ==> {:.3g} MB/sec\n",
     //     wtimer.Elapsed(), totsize/1e6, totsize/1e6/wtimer.Elapsed());
     array_mutex.unlock();
 }
@@ -407,7 +375,7 @@ void BlockArray::LoadBlockForward(int yblock, int zblock, Complx *slab) {
     array_mutex.lock();
     rtimer.increment(thisrtimer.timer);
     bytes_read += totsize * sizeof(Complx);
-    // fprintf(stderr, "LoadBlock took %.3g sec to read %.3g MB ==> %.3g MB/sec\n",
+    // fmt::print(stderr, "LoadBlock took {:.3g} sec to read {:.3g} MB ==> {:.3g} MB/sec\n",
     //         rtimer.Elapsed(), totsize/1e6, totsize/1e6/rtimer.Elapsed());
     array_mutex.unlock();
     return;
@@ -535,7 +503,7 @@ void BlockArray::LoadBlock(int yblock, int zblock, Complx *slab) {
     return;
 }
 
-Complx *BlockArray::bopen(int yblock, int zblock, const char *mode) {
+Complx *BlockArray::bopen(int yblock, int zblock, const std::string &mode [[maybe_unused]]) {
     // Set up for reading or writing this block
     assert(yblock >= 0 && yblock < numblock);
     assert(zblock >= 0 && zblock < numblock);

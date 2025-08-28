@@ -3,6 +3,8 @@
 #include <cassert>
 #include <cstdio>
 
+#include "fmt/base.h"
+
 class SplineFunction {
     // This will be a class to store the points of a spline
     // and return interpolated values
@@ -69,7 +71,7 @@ public:
     }
     void print(FILE *fp) {
         int j;
-        for (j = 0; j < n; j++) fprintf(fp, "%d: %15.10lg %15.10lg\n", j, x[j], y[j]);
+        for (j = 0; j < n; j++) fmt::print(fp, "{:d}: {:15.10g} {:15.10g}\n", j, x[j], y[j]);
     }
 
     void sort_arrays() {

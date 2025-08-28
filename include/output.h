@@ -60,8 +60,6 @@ void WriteParticlesSlab(
 );
 
 void SetupOutputDir(Parameters &param);
-int CleanDirectory(const char *path);
-int CreateDirectories(const char *path);
 
 // Returns GiB size of allocated buffer
 double InitOutputBuffers(Parameters &param);
