@@ -10,3 +10,5 @@ FREEZE
 fftw_zeldovich.wisdom
 build/
 .vscode/
+/subprojects/fmt*/
+/subprojects/packagecache/

@@ -66,9 +66,9 @@ double PowerSpectrum::sigmaR(double R) {
            Romberg(&PowerSpectrum::sigmaR_integrand, 0, 10.0, target_prec, &precision)
         );
         if (precision > target_prec) {
-            fprintf(
+            fmt::print(
                stderr,
-               "Error: actual Romberg integration precision (%g) is greater than the target precision (%g); halting.\n",
+               "Error: actual Romberg integration precision ({:g}) is greater than the target precision ({:g}); halting.\n",
                precision,
                target_prec
             );
@@ -118,7 +118,7 @@ double PowerSpectrum::Romberg(
                TT[jj][k - 1] + (TT[jj][k - 1] - TT[jj - 1][k - 1]) / (fourtokm1 - 1);
         }
         h *= 0.5;
-        // fprintf(stderr,"TT[%d] = %g\n", jj, TT[jj][jj]);
+        // fmt::print(stderr,"TT[{:d}] = {:g}\n", jj, TT[jj][jj]);
         if (jj > 1 && fabs(TT[jj][jj] - TT[jj - 1][jj - 1]) < prec * fabs(TT[jj][jj]))
             break;
     } while (jj < MAXITER);
@@ -127,7 +127,7 @@ double PowerSpectrum::Romberg(
     return TT[jj][jj];
 }
 
-int PowerSpectrum::InitFromFile(char filename[], Parameters &param) {
+int PowerSpectrum::InitFromFile(const fs::path &filename, Parameters &param) {
     // Read the file and load/compile the spline function
     // Return 0 if ok
     // Read the file
@@ -139,10 +139,10 @@ int PowerSpectrum::InitFromFile(char filename[], Parameters &param) {
     FILE *fp;
     double k, P;
     int nn;
-    fprintf(stderr, "Loading power spectrum from file \"%s\"\n", filename);
-    fp = fopen(filename, "r");
+    fmt::print(stderr, "Loading power spectrum from file \"{}\"\n", filename);
+    fp = fopen(filename.c_str(), "r");
     if (fp == NULL) {
-        fprintf(stderr, "Power spectrum file \"%s\" not found; exiting.\n", filename);
+        fmt::print(stderr, "Power spectrum file \"{}\" not found; exiting.\n", filename);
         exit(1);
     }
     nn = 0;
@@ -174,8 +174,8 @@ int PowerSpectrum::InitFromPowerLaw(double _powerlaw_index, Parameters &param) {
     assert(_powerlaw_index != 1000);
     powerlaw_index = _powerlaw_index;
     is_powerlaw    = 1;
-    fprintf(
-       stderr, "Initializing power spectrum with power law index %g\n", powerlaw_index
+    fmt::print(
+       stderr, "Initializing power spectrum with power law index {:g}\n", powerlaw_index
     );
     kmin = 1e-4;  // Arbitrary; used by f_NL
 
@@ -189,8 +189,8 @@ void PowerSpectrum::Normalize(Parameters &param) {
 
     // Might still have to normalize things!
     if (param.Pk_norm > 0.0) {  // Do a normalization
-        fprintf(
-           stderr, "Input sigma(%f) = %.6g\n", param.Pk_norm, sigmaR(param.Pk_norm)
+        fmt::print(
+           stderr, "Input sigma({:f}) = {:.6g}\n", param.Pk_norm, sigmaR(param.Pk_norm)
         );
 
         if (param.Pk_sigma > 0) {
@@ -204,8 +204,8 @@ void PowerSpectrum::Normalize(Parameters &param) {
             );  // Illegal state! We checked this in the params
         }
 
-        fprintf(
-           stderr, "Final sigma(%f) = %.6g\n", param.Pk_norm, sigmaR(param.Pk_norm)
+        fmt::print(
+           stderr, "Final sigma({:f}) = {:.6g}\n", param.Pk_norm, sigmaR(param.Pk_norm)
         );
     }
     // Might need to normalize to the box volume.  This is appropriate
@@ -216,7 +216,7 @@ void PowerSpectrum::Normalize(Parameters &param) {
     Pk_smooth2 = param.Pk_smooth * param.Pk_smooth;
 
     fixed_power = param.qPk_fix_to_mean;
-    if (fixed_power) fprintf(stderr, "Fixing density mode amplitudes to sqrt(P(k))\n");
+    if (fixed_power) fmt::print(stderr, "Fixing density mode amplitudes to sqrt(P(k))\n");
 
     primordial_norm = 1.;
     primordial_norm = this->power(this->kmin) / this->primordial_power(this->kmin);
@@ -237,11 +237,11 @@ double PowerSpectrum::power(double wavenumber) {
     } else {
         static bool already_warned = false;
         if (wavenumber > kmax && !already_warned) {
-            fprintf(
+            fmt::print(
                stderr,
                R"(
 *** WARNING: power spectrum spline interpolation was requested
-past the maximum k (%f) that was provided in the input power
+past the maximum k ({:f}) that was provided in the input power
 spectrum file.  The extrapolation should be well-behaved, but
 make sure that this was expected.  Provide a power spectrum
 that goes to at least k=10 (or higher if your k_Nyquist demands
@@ -315,7 +315,7 @@ Complx PowerSpectrum::cgauss<1>(double wavenumber, int64_t rng) {
 
     double Pk = this->power(wavenumber);
     double phase1, phase2, r2;
-    // fprintf(stderr,"P(%f) = %g\n",wavenumber,Pk);
+    // fmt::print(stderr,"P({:f}) = {:g}\n",wavenumber,Pk);
     do {
         phase1 = one_rand<1>(rng) * 2.0 - 1.0;
         phase2 = one_rand<1>(rng) * 2.0 - 1.0;
@@ -327,7 +327,7 @@ Complx PowerSpectrum::cgauss<1>(double wavenumber, int64_t rng) {
         r2 = sqrt(-Pk * log(r2) / r2);  // Drop the factor of 2, so these Gaussians
                                         // have variance of 1/2.
     }
-    // fprintf(stderr,"cgauss: %f %f\n", phase1*r2, phase2*r2);
+    // fmt::print(stderr,"cgauss: {:f} {:f}\n", phase1*r2, phase2*r2);
     return Complx(phase1 * r2, phase2 * r2);
 }
 

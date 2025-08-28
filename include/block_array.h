@@ -5,9 +5,12 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <filesystem>
 
 #include "STimer.h"
 #include "zeldovich.h"
+
+namespace fs = std::filesystem;
 
 #ifdef DIRECTIO
 #include <stdint.h>
@@ -49,7 +52,7 @@ public:
        ppd;  // Making ppd a 64-bit integer avoids trouble with ppd^3 int32_t overflow
     int64_t ppdhalf;  // ppd/2
     int64_t narray;   // Make int64 to avoid overflow in later calculations
-    char TMPDIR[1024];
+    fs::path TMPDIR;
     int ramdisk;
     int quickdelete;
     int part;
@@ -58,7 +61,7 @@ public:
        int _ppd,
        int _numblock,
        int _narray,
-       char *_dir,
+       const fs::path &_dir,
        int _ramdisk,
        int _quickdelete,
        int _part
@@ -72,14 +75,14 @@ private:
     off_t fileoffset;
     int diskbuffer;
 
-    void bopen(int yblock, int zblock, const char *mode);
+    void bopen(int yblock, int zblock, const std::string &mode);
     void bclose();
     void bwrite(Complx *buffer, size_t num);
     void bread(Complx *buffer, size_t num);
 #else
     // These routines are for reading blocks on and off disk without DIRECTIO
 private:
-    FILE *bopen(int yblock, int zblock, const char *mode);
+    FILE *bopen(int yblock, int zblock, const std::string &mode);
     void bclose(FILE *fp);
     void bwrite(FILE *fp, Complx *buffer, size_t num);
     void bread(FILE *fp, Complx *buffer, size_t num);
@@ -103,7 +106,7 @@ public:
     void LoadBlockForward(int yblock, int zblock, Complx *slab);
 
 private:
-    Complx *bopen(int yblock, int zblock, const char *mode);
+    Complx *bopen(int yblock, int zblock, const std::string &mode);
     void bclose(Complx *&IOptr);
     void bwrite(Complx *&IOptr, Complx *buffer, size_t num);
     void bread(Complx *&IOptr, Complx *buffer, size_t num);

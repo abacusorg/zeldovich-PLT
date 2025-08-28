@@ -7,6 +7,10 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        disk: [true, false]
+    name: Test with DISK=${{ matrix.disk }}
     
     steps:
     - uses: actions/checkout@v4
@@ -17,10 +21,12 @@ jobs:
         sudo apt-get install -y meson ninja-build build-essential libgsl-dev libfftw3-dev
     
     - name: Setup build directory
-      run: meson setup builddir
+      run: meson setup builddir -DDISK=${{ matrix.disk }} -Dwerror=true -Db_sanitize=address,undefined
     
     - name: Compile
       run: meson compile -C builddir
     
     - name: Run
+      env:
+        ASAN_OPTIONS: detect_leaks=0
       run: ./builddir/zeldovich example.par

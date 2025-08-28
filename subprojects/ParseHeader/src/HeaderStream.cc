@@ -1,42 +1,45 @@
-#include "ParseHeader.hh"
-#include <assert.h>
-#include <fstream>
-#include <iostream>
-#include <sstream>
 #include <stdio.h>
 #include <stdlib.h>
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <assert.h>
+#include "ParseHeader.hh"
 
-HeaderStream::HeaderStream(std::string fn) {
-    name         = fn;
-    buffer       = (char *) NULL;
+#include <fmt/format.h>
+#include <fmt/ostream.h>
+#include <fmt/std.h>
+
+HeaderStream::HeaderStream(const fs::path &fn) {
+    name = fn;
+    buffer = (char *) NULL;
     bufferlength = 0;
-    fp           = (FILE *) NULL;
+    fp = (FILE *) NULL;
 }
 
 HeaderStream::~HeaderStream(void) {
-    if (buffer != (char *) NULL) delete[] buffer;
+    if(buffer != (char *) NULL) delete[] buffer;
 }
 
 void HeaderStream::OpenForRead(void) {
-    if (name.empty()) {
-        std::cerr << "HeaderStream::OpenForRead: filename is empty\n";
+    if(name.empty()) {
+        fmt::print(std::cerr, "HeaderStream::OpenForRead: filename is empty\n");
         exit(1);
     }
-    if (fp != (FILE *) NULL) {
-        std::cerr << "HeaderStream::OpenForRead: file is already open\n";
+    if(fp != (FILE *)NULL) {
+        fmt::print(std::cerr, "HeaderStream::OpenForRead: file is already open\n");
         exit(1);
     }
-    fp = fopen(name.c_str(), "rb");
-    if (fp == (FILE *) NULL) {
-        std::cerr << "HeaderStream::OpenForRead:  cannot open filename \"" + name
-                        + "\"\n";
+    fp=fopen(name.c_str(),"rb"); 
+    if(fp==(FILE *) NULL) {
+        fmt::print(std::cerr, "HeaderStream::OpenForRead:  cannot open filename \"{}\"\n", name);
         exit(1);
     }
 }
 
 void HeaderStream::Close(void) {
-    if (fp == (FILE *) NULL) {
-        std::cerr << "HeaderStream::Close: file is already closed\n";
+    if(fp == (FILE *)NULL) {
+        fmt::print(std::cerr, "HeaderStream::Close: file is already closed\n");
         exit(1);
     }
     fclose(fp);
@@ -47,23 +50,31 @@ void HeaderStream::Close(void) {
 //     file open, at the end of the header.
 void HeaderStream::SkipHeader(void) {
     OpenForRead();
+    bufferlength = HeaderStream::SkipHeaderFromFP(fp);
+    return;
+}
+
+// returns length of header, including the ^B^B at end, and leave the
+//     file open, at the end of the header.
+size_t HeaderStream::SkipHeaderFromFP(FILE *fp) {
+    size_t bufferlength;
     char buf[2];
-    if (fread(&(buf[1]), 1, 1, fp) <= 0) {
+    if(fread(&(buf[1]), 1, 1, fp)<=0){
         bufferlength = 2;  // pseudo ^B^B
-        return;
+        return bufferlength;
     }
-    int len = 1;
+    size_t len = 1;
     do {
         buf[0] = buf[1];
-        if (fread(&(buf[1]), 1, 1, fp) <= 0) {
-            len += 2;  // pseudo ^B^B
+        if(fread(&(buf[1]), 1, 1, fp)<=0){
+            len += 2; // pseudo ^B^B
             break;
         }
         len++;
-    } while (!(buf[0] == 0x2 && buf[1] == '\n'));
-
+    } while(!(buf[0]==0x2 && buf[1]=='\n'));
+    
     bufferlength = len;
-    return;
+    return bufferlength;
 }
 
 // get length of the header, including the ^B^B at the end
@@ -76,91 +87,82 @@ void HeaderStream::ReadHeader(void) {
     GetHeaderLength();  // this guarantees there is a valid header
     buffer = new char[bufferlength];
     OpenForRead();
-    size_t nread = fread(&(buffer[0]), 1, bufferlength - 2, fp);
-    assert(nread == bufferlength - 2);
+    size_t nread = fread(&(buffer[0]), 1, bufferlength-2, fp);
+    assert(nread == bufferlength-2);
     // replace the end-of-header token with two nulls as required by the parser
-    buffer[bufferlength - 2] = 0x0;
-    buffer[bufferlength - 1] = 0x0;
+    buffer[bufferlength-2] = 0x0;
+    buffer[bufferlength-1] = 0x0;
 }
 
-FILE *OpenForWrite(std::string fn, bool overwrite) {
-    if (fn.empty()) {
-        std::cerr << "OpenForWrite: filename is empty\n";
+FILE* OpenForWrite(const fs::path &fn, bool overwrite) {
+    if(fn.empty()) {
+        fmt::print(std::cerr, "OpenForWrite: filename is empty\n");
         exit(1);
     }
 
-    FILE *fp = fopen(fn.c_str(), "rb");
-    if (fp != (FILE *) NULL) {
-        if (!overwrite) {
-            std::cerr << "OpenForWrite:  file \"" + fn
-                            + "\" exists and overwrite == false\n";
+    FILE *fp=fopen(fn.c_str(),"rb"); 
+    if(fp!=(FILE *) NULL) {
+        if(!overwrite) {
+            fmt::print(std::cerr, "OpenForWrite:  file \"{}\" exists and overwrite == false\n", fn);
             exit(1);
-        } else
+        }
+        else
             fclose(fp);
     }
 
-    fp = fopen(fn.c_str(), "wb");
-    if (fp == (FILE *) NULL) {
-        std::cerr << "OpenForWrite:  cannot open filename \"" + fn + "\"\n";
+    fp=fopen(fn.c_str(),"wb"); 
+    if(fp==(FILE *) NULL) {
+        fmt::print(std::cerr, "OpenForWrite:  cannot open filename \"{}\"\n", fn);
         exit(1);
     }
     return fp;
 }
 
-void OpenStreamForWrite(std::ofstream &outfile, std::string fn, bool overwrite) {
-    if (fn.empty()) {
-        std::cerr << "OpenForWrite: filename is empty\n";
-        exit(1);
-    }
-
-    outfile.open(fn.c_str());
-    if (outfile.is_open()) {
-        if (!overwrite) {
-            std::cerr << "OpenForWrite:  file \"" + fn
-                            + "\" exists and overwrite == false\n";
+void OpenStreamForWrite(std::ofstream& outfile, const fs::path &fn, bool overwrite) {
+    if(fs::exists(fn)) {
+        if(!overwrite) {
+            fmt::print(std::cerr, "OpenForWrite:  file \"{}\" exists and overwrite == false\n", fn);
             abort();
-        } else
+        }
+        else
             outfile.close();
     }
 
-    outfile.open(fn.c_str(), std::fstream::app);
-    if (!outfile.is_open()) {
-        std::cerr << "OpenForWrite:  cannot open filename \"" + fn + "\"\n";
+    outfile.open(fn, std::fstream::app);
+    if(!outfile.is_open()) {
+        fmt::print(std::cerr, "OpenForWrite:  cannot open filename \"{}\"\n", fn);
         exit(1);
     }
 }
 
-void WriteHStream(FILE *fp, std::string m) {
-    fwrite(m.c_str(), sizeof(char), m.length(), fp);
+void WriteHStream(FILE *fp, const std::string &m) {
+    fmt::print(fp, m);
 }
 
-void WriteHStream(FILE *fp, std::string m, std::string pre) {
-    std::string line(pre + m);
-    fwrite(line.c_str(), sizeof(char), line.length(), fp);
+void WriteHStream(FILE *fp, const std::string &m, const std::string &pre) {
+    fmt::print(fp, "{}{}", pre, m);
 }
 
 void WriteHStream(FILE *fp, HeaderStream &in) {
-    fwrite(
-       in.buffer, sizeof(char), in.bufferlength - 2, fp
-    );  // write all but the two terminal nulls
+    fmt::print(fp, "{}", fmt::string_view(in.buffer, in.bufferlength-2));
 }
 
-void WriteHStream(FILE *fp, HeaderStream &in, std::string pre) {
+void WriteHStream(FILE *fp, HeaderStream &in, const std::string &pre) {
     std::stringstream ss(std::stringstream::in | std::stringstream::out);
     std::string line;
     ss << in.buffer;
-    while (getline(ss, line)) {
-        std::cout << pre + line + "\n";
-        line = pre + line + "\n";
-        fwrite(line.c_str(), sizeof(char), line.length(), fp);
+    while(getline(ss,line)) {
+        std::string s = fmt::format("{}{}\n", pre, line);
+        fmt::print(std::cout, "{}", s);  // TODO: why are we echoing to stdout?
+        fmt::print(fp, "{}", s);
     }
 }
 
 void FinalizeHeader(FILE *fout) {
-    if (fout == (FILE *) NULL) {
-        std::cerr << "FinalizeHeader: file pointer is NULL\n";
+    if(fout == (FILE *) NULL) {
+        fmt::print(std::cerr, "FinalizeHeader: file pointer is NULL\n");
         exit(1);
     }
     char tag[2] = {0x02, '\n'};
-    fwrite(tag, sizeof(char), 2, fout);
+    fmt::print(fout, "{}", fmt::string_view(tag,2));
 }

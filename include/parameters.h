@@ -1,9 +1,12 @@
 #pragma once
 
-#include "ParseHeader.hh"
-#include "header.h"
+#include <filesystem>
 
-class Parameters : public Header, public ParseHeader {
+#include "ParseHeader.hh"
+
+namespace fs = std::filesystem;
+
+class Parameters : public ParseHeader {
     // This is where we're going to stick all of the control parameters.
     // It is responsible for being able to load from an input param file
     // and to write an output header.
@@ -35,20 +38,20 @@ public:
     double Pk_smooth;       // The scale to smooth P(k) at, in simulation units!
     int qPk_fix_to_mean;    // Don't draw the mode amplitude from a Gaussian; use
                             // sqrt(P(k)) instead.
-    char Pk_filename[200];  // The file name for the P(k) input
+    fs::path Pk_filename;  // The file name for the P(k) input
     double Pk_powerlaw_index;  // The power law index n for a pure power law P(k) ~ k^n
-    char output_dir[1024];     // The file name for the Output
-    char density_filename[200];  // The file name for a density file output
+    fs::path output_dir;     // The file name for the Output
+    fs::path density_filename;  // The file name for a density file output
     double z_initial;
     HeaderStream *inputstream;  // Header stream from which the parameters were read.
                                 // After instantiation, points to end of header so
                                 // binary data could potentially be read
 
     int qonemode;     // If non-zero, only use the mode given by one_mode
-    int one_mode[3];  // Contains one k-vector to select
+    std::vector<int> one_mode;  // Contains one k-vector to select
 
     int qPLT;  // If non-zero, use the Particle Linear Theory modes read from a file
-    char PLT_filename[1024];  // file containing PLT eigenmodes
+    fs::path PLT_filename;  // file containing PLT eigenmodes
     int qPLTrescale;  // If non-zero, rescale the initial amplitudes to match continuum
                       // linear theory at PLT_target_z
     double PLT_target_z;  // The target redshift for the PLT rescaling
@@ -57,7 +60,7 @@ public:
     double n_s;      // Spectral index of the primordial power (only used for f_NL)
     double Omega_M;  // Omega_M at z=0 (only used for f_NL)
 
-    char ICFormat[1024];  // Abacus's expected input format (i.e. our output format)
+    std::string ICFormat;  // Abacus's expected input format (i.e. our output format)
 
     int AllowDirectIO;  // If -DDIRECTIO, need to know if we're on a AllowDirectIO
 
@@ -73,11 +76,10 @@ public:
     int setup();
     // Check against the defaults; complain if something is missing.
     // Setup the other variables
-    void print(FILE *fp, const char *datatype);
     void print(FILE *fp);
     // Write a suitable header into the output file
     //
-    Parameters(char *inputfile);
+    Parameters(const fs::path &inputfile);
     ~Parameters();
 
     void register_vars(void);

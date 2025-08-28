@@ -8,7 +8,7 @@
 #include "zeldovich.h"
 
 // Write a suitable header into the output file
-Parameters::Parameters(char *inputfile) : Header() {
+Parameters::Parameters(const fs::path &inputfile) {
     // Set default values first
     ppd             = 0;       // Illegal
     numblock        = 2;       // Ok, but you might not want this!
@@ -24,18 +24,18 @@ Parameters::Parameters(char *inputfile) : Header() {
     Pk_smooth       = 0;       // Legal default
     qPk_fix_to_mean = 0;       // Legal default
     seed            = 0;       // Legal default
-    strcpy(Pk_filename, "");   // Must specify Pk file or power law
+    Pk_filename = "";   // Must specify Pk file or power law
     Pk_powerlaw_index = 1000;  // Must specify Pk file or power law
-    strcpy(density_filename, "density%d");  // Legal default
+    density_filename = "density{:d}";  // Legal default
     qonemode = 0;                           // Legal default
-    memset(one_mode, 0, 3 * sizeof(int));   // Legal default
+    one_mode = {0, 0, 0};   // Legal default
     qPLT = 0;                               // Legal default
-    strcpy(PLT_filename, "");               // Legal default
+    PLT_filename = "";               // Legal default
     qPLTrescale  = 0;                       // Legal default
     PLT_target_z = 0.;                      // Legal default, probably don't want!
     f_NL         = 0.;     // Legal default; no primordial non-Gaussianity
     k_cutoff     = 1.;     // Legal default (corresponds to k_nyquist)
-    strcpy(ICFormat, "");  // Illegal default
+    ICFormat = "";  // Illegal default
     AllowDirectIO = 0;     // Legal default for most cases
     version       = -1;  // All new ICs should use verison 2 (default), but version 1 is
                          // available for backwards compatibility
@@ -56,7 +56,7 @@ Parameters::Parameters(char *inputfile) : Header() {
     }
 }
 
-Parameters::~Parameters() { inputstream->Close(); }
+Parameters::~Parameters() { inputstream->Close(); delete inputstream;}
 
 void Parameters::register_vars(void) {
     installscalar("BoxSize", boxsize, MUST_DEFINE);
@@ -79,7 +79,7 @@ void Parameters::register_vars(void) {
     installscalar("ZD_density_filename", density_filename, DONT_CARE);
     installscalar("InitialRedshift", z_initial, MUST_DEFINE);
     installscalar("ZD_qonemode", qonemode, DONT_CARE);
-    installvector("ZD_one_mode", one_mode, 3, 1, DONT_CARE);
+    installvector("ZD_one_mode", one_mode, DONT_CARE);
     installscalar("ZD_qPLT", qPLT, DONT_CARE);
     installscalar("ZD_PLT_filename", PLT_filename, DONT_CARE);
     installscalar("ZD_qPLT_rescale", qPLTrescale, DONT_CARE);
@@ -99,7 +99,7 @@ int Parameters::setup() {
     // Return 0 if all is well, 1 if this failed.
 
     if (version == -1) {
-        fprintf(stderr, R"(
+        fmt::print(stderr, R"(
 *** ERROR: ZD_Version was not specified for zeldovich-PLT.  New ICs should
     specify ZD_Version = 2; legacy ICs (pre-November 2019) should use
     ZD_Version = 1 to reproduce the old phases.  Please specify one of
@@ -111,7 +111,7 @@ int Parameters::setup() {
     assert(version == 1 || version == 2);
 
     if (version == 1) {
-        fprintf(stderr, R"(
+        fmt::print(stderr, R"(
 *** WARNING: zeldovich-PLT is being invoked with ZD_Version = 1.
     This means that the output phases depend on the ZD_NumBlock tuning parameter,
     so version 1 should only be used for backwards compatibility.  Use ZD_Version = 2
@@ -121,7 +121,7 @@ int Parameters::setup() {
     }
 
     ppd = (int64_t) round(cbrt(np));
-    fprintf(stderr, "Generating ICs for ppd = %lu\n", ppd);
+    fmt::print(stderr, "Generating ICs for ppd = {:d}\n", ppd);
     assert(ppd * ppd * ppd == np);
     assert(ppd <= MAX_PPD);
 
@@ -131,9 +131,9 @@ int Parameters::setup() {
         if (k_cutoff != 1.) {
             int numblock_old = numblock;
             numblock         = numblock * k_cutoff + .5;  // Ensure rounding
-            fprintf(
+            fmt::print(
                stderr,
-               "Note: using k_cutoff=%f means that we are using NumBlock=%d instead of the supplied value of NumBlock=%d\n",
+               "Note: using k_cutoff={:f} means that we are using NumBlock={:d} instead of the supplied value of NumBlock={:d}\n",
                k_cutoff,
                numblock,
                numblock_old
@@ -149,7 +149,7 @@ int Parameters::setup() {
     assert(!(Pk_norm < 0.0));
 
     if ((bool) (Pk_sigma > 0) == (bool) (Pk_sigma_ratio > 0)) {
-        fprintf(stderr, "Must specify exactly one of Pk_sigma or Pk_sigma_ratio!\n");
+        fmt::print(stderr, "Must specify exactly one of Pk_sigma or Pk_sigma_ratio!\n");
         exit(1);
     }
 
@@ -158,15 +158,15 @@ int Parameters::setup() {
     );  // Anything outside this range is probably a bug
 
     // Must specify exactly one of Pk file or power law index
-    assert((bool) (strlen(Pk_filename) > 0) != (bool) (Pk_powerlaw_index != 1000));
+    assert((!Pk_filename.empty()) != (bool) (Pk_powerlaw_index != 1000));
     if (Pk_powerlaw_index != 1000)
         assert(Pk_powerlaw_index <= 0);  // technically the code supports blue spectra,
                                          // but it's more likely input error!
-    if (qPLT) assert(!(strlen(PLT_filename) == 0));
+    if (qPLT) assert(!PLT_filename.empty());
     assert(k_cutoff >= 1);
 
     // If using PLT, you probably want an output format with velocities
-    if (qPLT) assert(strncmp(ICFormat, "RV", 2) == 0);
+    if (qPLT) assert(ICFormat.rfind("RV", 0) == 0);
 
     // Compute derived quantities
     separation  = boxsize / ppd;  // Length per grid point
@@ -174,18 +174,18 @@ int Parameters::setup() {
     fundamental = 2.0 * M_PI / boxsize;  // The k spacing
 
     if (qonemode)
-        fprintf(
-           stderr, "one_mode: %d, %d, %d\n", one_mode[0], one_mode[1], one_mode[2]
+        fmt::print(
+           stderr, "one_mode: {:d}, {:d}, {:d}\n", one_mode[0], one_mode[1], one_mode[2]
         );
 
     if (f_NL != 0.) {
-        fprintf(
+        fmt::print(
            stderr,
            "Generating local primordial non-Gaussianity, with parameters:\n"
-           " - ZD_f_NL = %g\n"
-           " - ZD_n_s = %g\n"
-           " - Omega_M = %g\n"
-           " - InitialRedshift = %g\n",
+           " - ZD_f_NL = {:g}\n"
+           " - ZD_n_s = {:g}\n"
+           " - Omega_M = {:g}\n"
+           " - InitialRedshift = {:g}\n",
            f_NL,
            n_s,
            Omega_M,
@@ -202,12 +202,12 @@ void Parameters::print(FILE *fp) {
     tm *now  = localtime(&t);
 
     WriteHStream(fp, *inputstream);
-    fprintf(fp, "#modified by ");
-    fprintf(fp, VERSION);
-    fprintf(fp, " TIME:  ");
-    fprintf(fp, "%s", asctime(now));
-    fprintf(fp, "\n");
-    fprintf(fp, "\n");
+    fmt::print(fp, "#modified by ");
+    fmt::print(fp, VERSION);
+    fmt::print(fp, " TIME:  ");
+    fmt::print(fp, "{:s}", asctime(now));
+    fmt::print(fp, "\n");
+    fmt::print(fp, "\n");
     double *ainit;
     ainit  = new double;
     *ainit = 1.0 / (1 + z_initial);

@@ -40,7 +40,7 @@ public:
        double *obtprec
     );
 
-    int InitFromFile(char filename[], Parameters &param);
+    int InitFromFile(const fs::path &filename, Parameters &param);
 
     int InitFromPowerLaw(double _powerlaw_index, Parameters &param);
 

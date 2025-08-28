@@ -389,7 +389,7 @@ particles move by at most 1 slab.
 `InitialConditionsDirectory`: *string*  
 The location to write the output.  In addition,
 the zeldovich code will use this for the swap space for the block transpose.
-This will generate files of the name `zeldovich.%d.%d`, which should be automatically
+This will generate files of the name `zeldovich.{:d}.{:d}`, which should be automatically
 deleted after the code has finished.
 
 `InitialRedshift`: *double*  

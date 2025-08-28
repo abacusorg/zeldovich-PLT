@@ -9,7 +9,7 @@
 // forward declaration of driver
 %code requires {
 # include <string>
-# include "stringutil.hh"
+# include "detail/stringutil.hh"
 class phDriver;
 }
 
@@ -35,7 +35,7 @@ class phDriver;
 // code between ‘%code {’ and ‘}’ is output in the *.cc file; 
 //   it needs detailed knowledge about the driver
 %code {
-# include "phDriver.hh"
+# include "detail/phDriver.hh"
 using std::string;
 }
 
@@ -97,13 +97,13 @@ gen_stmt
                 | FLOATval value_list EOS
                   {
                     driver.ERROR(string("syntax error, unexpected value \"") + 
-                                 ToString($1) + string("\", expecting 'identifier ='"), @1);
+                                 stringutil::ToString($1) + string("\", expecting 'identifier ='"), @1);
                   }
 
                 | INTval value_list EOS
                   {
                     driver.ERROR(string("syntax error, unexpected value \"") + 
-                                 ToString($1) + string("\", expecting 'identifier ='"), @1);
+                                 stringutil::ToString($1) + string("\", expecting 'identifier ='"), @1);
                   }
 
 		| EOS

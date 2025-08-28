@@ -1,8 +1,10 @@
 #ifndef __STRINGUTIL_H__
 #define __STRINGUTIL_H__
-#include <cstdlib>
-#include <sstream>
 #include <string>
+#include <sstream>
+#include <cstdlib>
+
+namespace stringutil {
 
 // format anything which knows how to format itself into a std::string
 template <typename T>
@@ -18,21 +20,17 @@ void strnlwr(char *cstr, int len);
 // Lowercase a std::string
 void strlwr(std::string &str);
 
-// get the root of a filename
-std::string fileroot(std::string s);
-
-// glob expand a filename
-void get_absolute_pathname(std::string &name);
-
 // following for doing printf-style formats
-std::ostream &do_setformat(std::ostream &os, const char *fmt);
+std::ostream& do_setformat(std::ostream& os, const char *fmt);
 
-typedef struct fmtT {
+typedef struct fmtT{
     const char *format;
 } fmtT;
 
-std::basic_ostream<char> &operator<<(std::basic_ostream<char> &os, const fmtT &sep);
+std::basic_ostream<char>& operator<<(std::basic_ostream<char>& os, const fmtT& sep);
 
 fmtT fmt(const char *t);
 
-#endif  // __STRINGUTIL_H__
+}
+
+#endif // __STRINGUTIL_H__

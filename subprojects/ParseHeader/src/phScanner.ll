@@ -5,16 +5,9 @@
 # include <climits>
 # include <string>
 # include <assert.h>
-# include "stringutil.hh"
-# include "phDriver.hh"
+# include "detail/stringutil.hh"
+# include "detail/phDriver.hh"
 # include "phParser.tab.hh"
-     
-    /* Work around an incompatibility in flex (at least versions
-       2.5.31 through 2.5.33): it generates code that does
-       not conform to C89.  See Debian bug 333231
-       <http://bugs.debian.org/cgi-bin/bugreport.cgi?bug=333231>.  */
-# undef yywrap
-# define yywrap() 1
     
     /* By default yylex returns int, we use token_type.
        Unfortunately yyterminate by default returns 0, which is
@@ -203,7 +196,7 @@ include                 BEGIN(incl);
                             location_stack[include_level++] = *yylloc;
                             if(include_level>=MAX_INCLUDE_STACK) {
                                 driver.MESSAGE(std::string("ERROR: exceeded maximum include stack depth: ") +
-                                               ToString(MAX_INCLUDE_STACK) + std::string("."), *yylloc);
+                                               stringutil::ToString(MAX_INCLUDE_STACK) + std::string("."), *yylloc);
                                 exit(1);
                             }
                             file_name_string.assign(tmp);
@@ -263,7 +256,7 @@ token_type screen(char* intext, int len) {
     char *text;
     text = strdup(intext);
     // text = strndup(intext, len);
-    strnlwr(text, len);
+    stringutil::strnlwr(text, len);
     len_key_table = (int) (sizeof(key_table)/sizeof(key_table[0]));
     
     for (i = 0; i < len_key_table; i++) {
