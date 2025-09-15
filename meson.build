@@ -16,6 +16,8 @@ if disk
     add_project_arguments(['-DDISK'], language: 'cpp')
 endif
 
+fs = import('fs')
+
 ph_proj = subproject('ParseHeader', default_options: ['b_sanitize=none'])
 parseheader_dep = ph_proj.get_variable('parseheader_dep')
 
@@ -45,4 +47,8 @@ exe = executable(
     dependencies: dep,
     install: true,
     install_rpath: '$ORIGIN/../lib64:$ORIGIN/../lib',
+)
+
+fs.copyfile(
+  'eigmodes128',
 )
