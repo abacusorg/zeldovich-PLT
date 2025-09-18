@@ -36,7 +36,7 @@ PowerSpectrum::PowerSpectrum(int n, Parameters &param) : SplineFunction(n) {
         }
         v1rng = NULL;
     }
-};
+}
 
 PowerSpectrum::~PowerSpectrum() {
     if (v1rng != NULL) {
@@ -45,7 +45,7 @@ PowerSpectrum::~PowerSpectrum() {
     } else {
         delete[] v2rng;
     }
-};
+}
 
 double PowerSpectrum::sigmaR_integrand(double k) {
     double x = k * Rnorm;
