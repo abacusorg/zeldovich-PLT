@@ -3,7 +3,7 @@
 #include <cassert>
 #include <cstdio>
 
-#include "fmt/base.h"
+#include <fmt/base.h>
 
 class SplineFunction {
     // This will be a class to store the points of a spline
