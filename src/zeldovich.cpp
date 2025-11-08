@@ -7,16 +7,19 @@
 #include <cstring>
 #include <ctime>
 #include <fstream>
-#include <gsl/gsl_rng.h>
 #include <iostream>
 #include <omp.h>
 #include <time.h>
 #include <filesystem>
 
-#include "fftw3.h"
+#include <fftw3.h>
 
-#include "ParseHeader.hh"
-#include "pcg-rng/pcg_random.hpp"
+#include <ParseHeader.hh>
+#include <pcg-rng/pcg_random.hpp>
+
+#ifdef HAVE_GSL
+#include <gsl/gsl_rng.h>
+#endif
 
 #include "block_array.h"
 #include "output.h"
@@ -362,12 +365,15 @@ void LoadPlane(
                     nskip = 0;
                 }
                 D = Pk.cgauss<2>(kmag, y);
-            } else {
+            }
+#ifdef HAVE_GSL
+            else {
                 // We deliberately only call cgauss() if we are inside the k_cutoff
                 // region to get the same phase for a given k and cutoff region, no
                 // matter the ppd
                 D = Pk.cgauss<1>(kmag, yres);
             }
+#endif
             // D = 0.1;    // If we need a known level
 
             if (k2 == 0.0) k2 = 1.0;  // Avoid divide by zero

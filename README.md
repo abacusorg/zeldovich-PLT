@@ -41,6 +41,8 @@ The zeldovich executable will be written to `build/zeldovich` (you can run `meso
 
 To build in out-of-core mode, use `meson setup build -DDISK=true`. The state will be buffered in the `InitialConditionsDirectory`. This allows one to generate much larger ICs than fit in memory.
 
+To build with support for setting `ZD_Version=1` in the parameter file, use `meson setup build -Dallow_v1=true`. This will not turn on version 1 RNG by default, but will allow it in the parameter file.
+
 Run with `./build/zeldovich <param_file>`.  An example parameter file (`example.par`) is provided, and all of the options are detailed in the "Parameter file options" section below.
 
 Meson itself can be obtained via pip. You probably want ninja too: `pip install meson ninja`.

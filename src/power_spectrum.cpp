@@ -15,6 +15,9 @@ PowerSpectrum::PowerSpectrum(int n, Parameters &param) : SplineFunction(n) {
     block                      = param.ppd / param.numblock;
     n_s                        = param.n_s;
 
+#ifdef HAVE_GSL
+    v1rng = NULL;
+
     if (param.version == 1) {
         v1rng = new gsl_rng *[block];
 
@@ -23,7 +26,9 @@ PowerSpectrum::PowerSpectrum(int n, Parameters &param) : SplineFunction(n) {
             gsl_rng_set(v1rng[i], longseed + i);
         }
         v2rng = NULL;
-    } else {
+    } else
+#endif
+    {
         // We'll make ppd/2 independent y-planes
         // But we do so by fast-forwarding the base RNG,
         // so logically this is just a single output stream from the RNG
@@ -34,15 +39,17 @@ PowerSpectrum::PowerSpectrum(int n, Parameters &param) : SplineFunction(n) {
             // Each plane is ppd^2 complexes
             v2rng[i].advance(2 * MAX_PPD * MAX_PPD);
         }
-        v1rng = NULL;
     }
 }
 
 PowerSpectrum::~PowerSpectrum() {
+#ifdef HAVE_GSL
     if (v1rng != NULL) {
         for (int64_t i = 0; i < block; i++) gsl_rng_free(v1rng[i]);
         delete[] v1rng;
-    } else {
+    } else
+#endif
+    {
         delete[] v2rng;
     }
 }
@@ -273,11 +280,13 @@ double PowerSpectrum::infer_Tk(double wavenumber) {
     return sqrt(power(wavenumber) / primordial_power(wavenumber));
 }
 
+#ifdef HAVE_GSL
 // ZD_Version 1
 template <>
 double PowerSpectrum::one_rand<1>(int64_t i) {
     return gsl_rng_uniform(v1rng[i]);
 }
+#endif
 
 // ZD_Version 2
 // Returns a random double in (0,1]
@@ -307,6 +316,7 @@ double PowerSpectrum::one_rand<2>(int64_t i) {
     return ldexp(r, -64);
 }
 
+#ifdef HAVE_GSL
 template <>
 Complx PowerSpectrum::cgauss<1>(double wavenumber, int64_t rng) {
     // Return a gaussian complex deviate scaled to the sqrt of the power
@@ -330,6 +340,7 @@ Complx PowerSpectrum::cgauss<1>(double wavenumber, int64_t rng) {
     // fmt::print(stderr,"cgauss: {:f} {:f}\n", phase1*r2, phase2*r2);
     return Complx(phase1 * r2, phase2 * r2);
 }
+#endif
 
 // ZD_Version 2 must use this "deterministic" version of Box-Muller,
 // which is guaranteed to make exactly 2 RNG calls (unlike the rejection

@@ -2,8 +2,11 @@
 
 #include <stdint.h>
 
-#include <gsl/gsl_rng.h>
 #include <pcg-rng/pcg_random.hpp>
+
+#ifdef HAVE_GSL
+#include <gsl/gsl_rng.h>
+#endif
 
 #include "parameters.h"
 #include "spline_function.h"
@@ -26,7 +29,9 @@ public:
     double primordial_norm;
     double n_s;
 
+#ifdef HAVE_GSL
     gsl_rng **v1rng;  // The random number generators for the deprecated ZD_Version=1
+#endif
     pcg64 *v2rng;     // The random number generators for version 2 (current version)
 
     double sigmaR_integrand(double k);
