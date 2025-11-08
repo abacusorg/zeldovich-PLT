@@ -31,12 +31,19 @@ src = [
 ]
 
 inc = include_directories('include')
+cpp_args = []
+
+gsl_dep = dependency('gsl', required: get_option('allow_v1'))
+
+if gsl_dep.found()
+    cpp_args += ['-DHAVE_GSL']
+endif
 
 dep = [
-    dependency('gsl'),
     dependency('fftw3'),
     dependency('fmt'),
     dependency('openmp'),
+    gsl_dep,
     parseheader_dep,
 ]
 
@@ -47,6 +54,7 @@ exe = executable(
     dependencies: dep,
     install: true,
     install_rpath: '$ORIGIN/../lib64:$ORIGIN/../lib',
+    cpp_args: cpp_args,
 )
 
 fs.copyfile(

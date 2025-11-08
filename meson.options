@@ -1,1 +1,2 @@
 option('DISK', type : 'boolean', value : false, description : 'Buffer state on disk')
+option('allow_v1', type : 'feature', value : 'auto', description : 'Allow ZD_Version=1 (needs GSL)')
