@@ -184,7 +184,9 @@ BlockArray& array, Parameters& param) {
 
 void SetupOutputDir(Parameters &param){
     CleanDirectory(param.output_dir);
+    CleanDirectory(param.temp_dir);
     CreateDirectories(param.output_dir);
+    CreateDirectories(param.temp_dir);
 }
 
 // Returns GiB size of allocated buffer

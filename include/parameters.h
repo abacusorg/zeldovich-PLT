@@ -34,6 +34,7 @@ public:
     char Pk_filename[200];   // The file name for the P(k) input
     double Pk_powerlaw_index;   // The power law index n for a pure power law P(k) ~ k^n
     char output_dir[1024];   // The file name for the Output
+    char temp_dir[1024];   // The directory for the BlockArray temp files. No effect if -DDISK is not set.
     char density_filename[200];   // The file name for a density file output
     double z_initial;
     HeaderStream * inputstream; // Header stream from which the parameters were read. After instantiation, points to end of header so binary data could potentially be read

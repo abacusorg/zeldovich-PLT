@@ -27,6 +27,7 @@ Parameters::Parameters(char *inputfile): Header() {
     seed = 0;    // Legal default
     strcpy(Pk_filename,"");   // Must specify Pk file or power law
     Pk_powerlaw_index = 1000;  // Must specify Pk file or power law
+    strcpy(temp_dir,""); // Legal; defaults to output_dir if empty
     strcpy(density_filename,"density%d");  // Legal default
     qonemode = 0; // Legal default
     memset(one_mode, 0, 3*sizeof(int)); // Legal default
@@ -78,6 +79,7 @@ void Parameters::register_vars(void) {
     installscalar("ZD_Pk_filename",Pk_filename,DONT_CARE);
     installscalar("ZD_Pk_powerlaw_index",Pk_powerlaw_index,DONT_CARE);
     installscalar("InitialConditionsDirectory",output_dir,MUST_DEFINE);
+    installscalar("ZD_TempDirectory",temp_dir,DONT_CARE);
     installscalar("ZD_density_filename",density_filename,DONT_CARE);
     installscalar("InitialRedshift",z_initial,MUST_DEFINE);
     installscalar("ZD_qonemode",qonemode,DONT_CARE);
@@ -126,6 +128,12 @@ int Parameters::setup() {
     fprintf(stderr,"Generating ICs for ppd = %lu\n", ppd);
     assert(ppd*ppd*ppd == np);
     assert(ppd <= MAX_PPD);
+
+    if (strlen(temp_dir) == 0){
+        // Default to output_dir
+        strncpy(temp_dir, output_dir, sizeof(temp_dir) - 1);
+        temp_dir[sizeof(temp_dir) - 1] = '\0';
+    }
     
     // NumBlock is only modified in version 1
     if(version == 1){

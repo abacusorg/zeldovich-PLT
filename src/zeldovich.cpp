@@ -849,7 +849,7 @@ double _outbufferGiB = 0;
     if(param.f_NL != 0.){
         fprintf(stderr,"Generating phi field\n");
         char phi_dir[1030];
-        sprintf(phi_dir, "%s/phi", param.output_dir);
+        sprintf(phi_dir, "%s/phi", param.temp_dir);
         phi_array = new BlockArray(param.ppd,param.numblock,1,phi_dir,param.AllowDirectIO, 0, PART);
 
         ZeldovichZ(*phi_array, param, Pk, 1, NULL);
@@ -861,7 +861,7 @@ double _outbufferGiB = 0;
         ZeldovichXY_Phi(*phi_array, param);
     }
 
-    BlockArray array(param.ppd,param.numblock,narray,param.output_dir,param.AllowDirectIO, quickdelete, PART);
+    BlockArray array(param.ppd,param.numblock,narray,param.temp_dir,param.AllowDirectIO, quickdelete, PART);
     ZeldovichZ(array, param, Pk, 0, phi_array);
     delete phi_array;  phi_array = NULL;
     
