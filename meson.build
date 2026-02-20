@@ -7,8 +7,18 @@ project(
 )
 add_project_arguments('-march=native', language: 'cpp')
 
+cxx = meson.get_compiler('cpp')
+
 if get_option('optimization') == '3'
-    add_project_arguments(['-Ofast'], language: 'cpp')
+    # Promote optimization=3 to -Ofast by default
+    if cxx.get_id() == 'intel-llvm'
+        opt_flag_ = '-fp-model=fast=1'
+    elif cxx.get_id() == 'clang'
+        opt_flag_ = '-ffast-math'
+    else
+        opt_flag_ = '-Ofast'
+    endif
+    add_project_arguments(opt_flag_, language: 'cpp')
 endif
 
 disk = get_option('DISK')
