@@ -17,8 +17,6 @@ namespace fs = std::filesystem;
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
-
-#include "file.h"
 #endif
 
 // We use a set of X-Z arrays of Complx numbers (ordered by A and Y).
