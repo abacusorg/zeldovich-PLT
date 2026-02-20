@@ -145,18 +145,14 @@ int PowerSpectrum::InitFromFile(const fs::path &filename, Parameters &param) {
     char line[200];
     FILE *fp;
     double k, P;
-    int nn;
     fmt::print(stderr, "Loading power spectrum from file \"{}\"\n", filename);
     fp = fopen(filename.c_str(), "r");
     if (fp == NULL) {
         fmt::print(stderr, "Power spectrum file \"{}\" not found; exiting.\n", filename);
         exit(1);
     }
-    nn = 0;
 
-    int jj = 0;
     while (fgets(line, 200, fp) != NULL) {
-        jj++;
         if (line[0] == '#') continue;
         sscanf(line, "%lf %lf", &k, &P);
         if (k < 0.0) continue;
@@ -169,7 +165,6 @@ int PowerSpectrum::InitFromFile(const fs::path &filename, Parameters &param) {
             this->load(-1e3, log(P));
         }
         kmax = std::max(k, kmax);
-        nn++;
     }
     this->spline();
 
