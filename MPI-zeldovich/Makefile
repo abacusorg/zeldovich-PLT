@@ -1,23 +1,5 @@
-# ====================================================================================
-# HERMITIAN 3D MATRIX MPI - MAKEFILE
-# ====================================================================================
-# This Makefile builds the Hermitian 3D matrix MPI code in its current
-# refactoring state (currently Phase 5: Core modules extracted).
-#
-# Usage:
-#   make                    # Build with default settings
-#   make clean              # Clean build artifacts
-#   make CFLAGS="..."       # Build with custom flags
-#
-# Example custom builds:
-#   make CFLAGS="-DUSE_DOUBLE_PRECISION"           # Double precision (or set in src/config.h)
-#   make CFLAGS="-DPRODUCTION_MODE"                # Production mode
-#   make CFLAGS="-DUSE_X_PADDING=0"                # No padding
-#
-# NOTE: USE_DOUBLE_PRECISION can be set in src/config.h, but CFLAGS takes precedence.
-#       The Makefile checks CFLAGS to select the correct FFTW libraries (single vs double).
-#       If you set USE_DOUBLE_PRECISION in config.h, you should also add it to CFLAGS
-#       to ensure the correct libraries are linked.
+# It uses zeldovich-PLT files - need to link properly
+# It also builds the reassembly tool to write the particles to a file.
 # ====================================================================================
 
 # Compiler and flags
