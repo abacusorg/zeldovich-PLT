@@ -127,16 +127,16 @@ void WriteOutputAfterFFT(
             memcpy(density_slice, fft_output[0], slice_size * sizeof(real_t));
         }
         
-        // Copy displacements: F→axis0(Z), G→axis1(Y), H→axis2(X)
-        memcpy(displ_axis0_slice, fft_output[1], slice_size * sizeof(real_t));  // F → Z
-        memcpy(displ_axis1_slice, fft_output[2], slice_size * sizeof(real_t));  // G → Y
-        memcpy(displ_axis2_slice, fft_output[3], slice_size * sizeof(real_t));  // H → X
+        // Copy displacements: F->axis0(Z), G->axis1(Y), H->axis2(X)
+        memcpy(displ_axis0_slice, fft_output[1], slice_size * sizeof(real_t));  // F -> Z
+        memcpy(displ_axis1_slice, fft_output[2], slice_size * sizeof(real_t));  // G -> Y
+        memcpy(displ_axis2_slice, fft_output[3], slice_size * sizeof(real_t));  // H -> X
         
-        // Copy velocities if present: Fv→axis0(Z), Gv→axis1(Y), Hv→axis2(X)
+        // Copy velocities if present: Fv->axis0(Z), Gv->axis1(Y), Hv->axis2(X)
         if (has_velocities) {
-            memcpy(vel_axis0_slice, fft_output[4], slice_size * sizeof(real_t));  // Fv → Z
-            memcpy(vel_axis1_slice, fft_output[5], slice_size * sizeof(real_t));  // Gv → Y
-            memcpy(vel_axis2_slice, fft_output[6], slice_size * sizeof(real_t));  // Hv → X
+            memcpy(vel_axis0_slice, fft_output[4], slice_size * sizeof(real_t));  // Fv -> Z
+            memcpy(vel_axis1_slice, fft_output[5], slice_size * sizeof(real_t));  // Gv -> Y
+            memcpy(vel_axis2_slice, fft_output[6], slice_size * sizeof(real_t));  // Hv -> X
         }
         
         // Write Z-slab for this rank's X-range

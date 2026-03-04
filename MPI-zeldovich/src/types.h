@@ -28,7 +28,7 @@ typedef struct {
 // Core region  : Non-overlapping, primary responsibility of this rank
 // Padded region: Extended with X_PADDING on each side, may overlap with neighbors
 //
-// Ex. (N=1024, 3×3 decomp, X_PADDING=10):
+// Ex. (N=1024, 3x3 decomp, X_PADDING=10):
 //   Rank 0 core: X=[0, 342), Z=[0, 342)
 //   Rank 0 padded: X=[-10, 352), Z=[-10, 352)  // Wraps at boundaries
 // ====================================================================================
@@ -77,10 +77,10 @@ typedef struct {
 // Maps logical coordinates (can be negative or >= N) to actual array indices [0, N).
 //
 // Examples (N=1024, X_PADDING=10):
-//   PERIODIC_X(50, 1024)   → 50    (common case, no-op)
-//   PERIODIC_X(-5, 1024)   → 1019  (wraps from right: X=-5 → X=N-5)
-//   PERIODIC_X(-10, 1024)  → 1014  (wraps from right: X=-10 → X=N-10)
-//   PERIODIC_X(1030, 1024) → 6     (wraps to left: X=N+6 → X=6)
+//   PERIODIC_X(50, 1024)   -> 50    (common case, no-op)
+//   PERIODIC_X(-5, 1024)   -> 1019  (wraps from right: X=-5 -> X=N-5)
+//   PERIODIC_X(-10, 1024)  -> 1014  (wraps from right: X=-10 -> X=N-10)
+//   PERIODIC_X(1030, 1024) -> 6     (wraps to left: X=N+6 -> X=6)
 
 #if USE_X_PADDING
     #define PERIODIC_X(x, N) \

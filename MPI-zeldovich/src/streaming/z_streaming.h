@@ -37,11 +37,11 @@ void z_streaming_unpack(
     fftw_complex_t *recv_buffer,            // Source data (source-grouped)
     int64_t *recv_displs_src,              // Base offset per source
     int *src_total_slices,                 // Total slices per source (unused, kept for API)
-    int *y_owner_src,                      // Y → src mapping
-    int *y_src_local_idx,                  // Y → local_idx mapping (unused, kept for API)
-    int *y_batch_idx,                      // Y → batch mapping
-    int *y_slice_idx_in_batch,             // Y → slice_idx in batch mapping
-    int **src_batch_slice_counts,           // [src][batch] → slice count
+    int *y_owner_src,                      // Y -> src mapping
+    int *y_src_local_idx,                  // Y -> local_idx mapping (unused, kept for API)
+    int *y_batch_idx,                      // Y -> batch mapping
+    int *y_slice_idx_in_batch,             // Y -> slice_idx in batch mapping
+    int **src_batch_slice_counts,           // [src][batch] -> slice count
     int global_max_batches,                // Total number of batches
     fftw_complex_t *local_z_slab,          // Destination buffer (one Z-slab)
     fftw_plan_t plan_1d_y);                 // FFT plan for Y-direction

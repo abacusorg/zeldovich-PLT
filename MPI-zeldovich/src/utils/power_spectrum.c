@@ -91,7 +91,7 @@ void cgauss(
         R = sqrt(Pk);
     }
     
-    // Convert angle to [0, 2π]
+    // Convert angle to [0, 2pi]
     theta = 2.0 * M_PI * theta;
     
     // Get z1, z2 (normal) and store in fftw_complex format

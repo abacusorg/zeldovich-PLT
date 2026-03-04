@@ -37,7 +37,7 @@ void verify_self_conjugate_constraints(int N, fftw_complex_t *slice, int global_
 // Includes both local and global verification via MPI_Reduce
 void verify_pencil_completeness_with_flags(char *y_filled, int pencils_per_rank, int N, int narray, int rank);
 
-// Verify final real-space matrix has imaginary parts ≈ 0 (AFTER full 3D FFT)
+// Verify final real-space matrix has imaginary parts ~= 0 (AFTER full 3D FFT)
 // Checks that the final output is numerically real (imaginary parts < 1e-10)
 void verify_real_space_symmetry(int N, fftw_complex_t *global_matrix);
 

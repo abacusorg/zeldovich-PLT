@@ -11,7 +11,7 @@ extern "C" {
 
 // ====================================================================================
 // Create FFTW plans for 2D and 1D transforms
-// - plan_2d_out: For Y-slice processing (X-Z plane, size N×N)
+// - plan_2d_out: For Y-slice processing (X-Z plane, size NxN)
 // - plan_1d_out: For Y-direction FFT on pencils (size N)
 // Both plans use FFTW_ESTIMATE for fast planning (change this later)
 // ====================================================================================

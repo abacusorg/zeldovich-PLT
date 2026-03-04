@@ -69,7 +69,7 @@ double power_spectrum_eval(const power_spectrum_params_t *params, double wavenum
 //
 // Algorithm: Box-Muller transform (deterministic, exactly 2 RNG calls)
 //  1. Generate two uniform random numbers R, theta
-//  2. Convert to polar coordinates: R = sqrt(-P(k) * log(R)), theta = 2π * theta
+//  2. Convert to polar coordinates: R = sqrt(-P(k) * log(R)), theta = 2pi * theta
 //  3. Return: R * (cos(theta) + i*sin(theta))
 //
 // Note: This function uses the global PCG RNG array from rng.h

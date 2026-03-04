@@ -114,10 +114,10 @@
 // 0 = Skip Hermitian symmetry checks (production mode)
 // 1 = Verify Hermitian symmetry (adds overhead) AND set F=0, H=0 for test
 //     When enabled: Sets F=0 and H=0 so conjugate slices are true conjugates of primary slices
-//     After 3D FFT, the result should be purely real (imaginary parts ≈ 0)
+//     After 3D FFT, the result should be purely real (imaginary parts ~= 0)
 // 2 = Verify Hermitian symmetry (adds overhead) AND set D=0, G=0 for test
 //     When enabled: Sets D=0 and G=0 so the matrix is purely imaginary
-//     After 3D FFT, the result should be purely imaginary (real parts ≈ 0)
+//     After 3D FFT, the result should be purely imaginary (real parts ~= 0)
 #ifndef VERIFY_HERMITIAN_SYMMETRY
 #define VERIFY_HERMITIAN_SYMMETRY 0
 #endif

@@ -7,8 +7,8 @@
 // - 2D grid decomposition for redistribution to pencil layout
 // - **NEW in v14**: PERIODIC BOUNDARY CONDITIONS FOR PADDING
 //   * Padding uses periodic boundaries (wrap-around) instead of clamping
-//   * Example: rank 0: [0,100] core → [-10,110] padded (wraps from right side!)
-//             rank 1: [100,200] core → [90,210] padded (normal overlap)
+//   * Example: rank 0: [0,100] core -> [-10,110] padded (wraps from right side!)
+//             rank 1: [100,200] core -> [90,210] padded (normal overlap)
 //   * Physics-correct for cosmological simulations (periodic box)
 //   * X=-10 wraps to X=N-10, X=N+5 wraps to X=5 (modulo arithmetic)
 //   * Efficient indexing: PERIODIC_X macro with fast-path for common case
@@ -28,7 +28,7 @@
 //   * Per-source write cursors track progress across batches
 //   * Eliminates ~64 GB transient allocation per batch (single precision, N=32K)
 // - Hermitian symmetry verification at multiple stages
-// - Final result: Real-space data (imaginary parts ≈ 0)
+// - Final result: Real-space data (imaginary parts ~= 0)
 // ====================================================================================
 
 #include <stdio.h>
@@ -116,8 +116,8 @@ extern "C" {
 // - 2D grid decomposition for redistribution to pencil layout
 // - **NEW in v14**: PERIODIC BOUNDARY CONDITIONS FOR PADDING
 //   * Padding uses periodic boundaries (wrap-around) instead of clamping
-//   * Example: rank 0: [0,100] core → [-10,110] padded (wraps from right side!)
-//             rank 1: [100,200] core → [90,210] padded (normal overlap)
+//   * Example: rank 0: [0,100] core -> [-10,110] padded (wraps from right side!)
+//             rank 1: [100,200] core -> [90,210] padded (normal overlap)
 //   * Physics-correct for cosmological simulations (periodic box)
 //   * X=-10 wraps to X=N-10, X=N+5 wraps to X=5 (modulo arithmetic)
 //   * Efficient indexing: PERIODIC_X macro with fast-path for common case
@@ -137,7 +137,7 @@ extern "C" {
 //   * Per-source write cursors track progress across batches
 //   * Eliminates ~64 GB transient allocation per batch (single precision, N=32K)
 // - Hermitian symmetry verification at multiple stages
-// - Final result: Real-space data (imaginary parts ≈ 0)
+// - Final result: Real-space data (imaginary parts ~= 0)
 // ====================================================================================
 
 #include <stdio.h>
@@ -286,12 +286,12 @@ extern "C" {
 // EXTRACTED FUNCTION IMPLEMENTATIONS
 // ====================================================================================
 // The following functions have been extracted to separate modules:
-//   - setup_fftw_plans_full() → fft/fft_setup.c
-//   - generate_hermitian_slice_pair_local() → generation/hermitian_generation.c
-//   - exchange_metadata() → communication/mpi_exchange.c
-//   - pack_slices_to_send_buffer() → communication/mpi_exchange.c
-//   - unpack_recv_buffer_to_pencils() → communication/mpi_exchange.c
-//   - z_streaming_unpack() → streaming/z_streaming.c
+//   - setup_fftw_plans_full() -> fft/fft_setup.c
+//   - generate_hermitian_slice_pair_local() -> generation/hermitian_generation.c
+//   - exchange_metadata() -> communication/mpi_exchange.c
+//   - pack_slices_to_send_buffer() -> communication/mpi_exchange.c
+//   - unpack_recv_buffer_to_pencils() -> communication/mpi_exchange.c
+//   - z_streaming_unpack() -> streaming/z_streaming.c
 //
 // All implementations are available via the module headers included above.
 // ====================================================================================
@@ -329,7 +329,7 @@ void unpack_and_FFT_x_row(
     - Apply 1D FFT along Y for each pencil in this X-row
     
     Memory savings: local_pencils holds only ONE X-row (z_count pencils),
-    not all pencils (x_count × z_count pencils).
+    not all pencils (x_count x z_count pencils).
     */
     
     // Calculate dimensions
@@ -406,8 +406,8 @@ void x_streaming_unpack(
     fftw_complex_t *recv_buffer,            // Source data (source-grouped)
     int64_t *recv_displs_src,              // Base offset per source
     int *src_total_slices,                 // Total slices per source
-    int *y_owner_src,                      // Y → src mapping
-    int *y_src_local_idx,                  // Y → local_idx mapping
+    int *y_owner_src,                      // Y -> src mapping
+    int *y_src_local_idx,                  // Y -> local_idx mapping
     fftw_complex_t *local_pencils,          // Destination buffer (one X-row)
     fftw_plan_t plan_1d_y)                  // FFT plan for Y-direction
 {
@@ -553,16 +553,16 @@ int main(int argc, char **argv)
         printf("VERSION 14: PERIODIC BOUNDARY CONDITIONS FOR PADDING\n");
         printf("====================================================================================\n");
         printf("Precision: %s (%d bytes per complex number)\n", PRECISION_NAME, BYTES_PER_COMPLEX);
-        printf("Matrix size: N = %d³, Total elements: %zu\n", N, (size_t)N * (size_t)N * (size_t)N);
+        printf("Matrix size: N = %d^3, Total elements: %zu\n", N, (size_t)N * (size_t)N * (size_t)N);
         printf("MPI ranks: %d (total_pairs: %d for N=%d)\n", num_ranks, total_pairs, N);
         printf("Multi-batch processing: Each rank processes multiple Y-slice pairs\n");
 #if USE_X_PADDING
         printf("V14 feature: Periodic boundary conditions (X_PADDING=%d per side)\n", X_PADDING);
         printf("            Physics-correct wrap-around at boundaries (not clamped!)\n");
-        printf("            Example: rank 0 core [0,100] → padded [-10,110] (wraps from right!)\n");
-        printf("                     rank 1 core [100,200] → padded [90,210] (normal overlap)\n");
+        printf("            Example: rank 0 core [0,100] -> padded [-10,110] (wraps from right!)\n");
+        printf("                     rank 1 core [100,200] -> padded [90,210] (normal overlap)\n");
         printf("                     X=-10 wraps to X=N-10, X=N+5 wraps to X=5\n");
-        printf("            Efficient PERIODIC_X macro: fast-path for common case x∈[0,N)\n");
+        printf("            Efficient PERIODIC_X macro: fast-path for common case x in [0,N)\n");
 #else
         printf("Grid decomposition: Core grid only (no padding, X_PADDING=0)\n");
         printf("            Each rank owns non-overlapping X-region\n");
@@ -706,9 +706,9 @@ int main(int argc, char **argv)
     
     uint64_t seed = 4;
     initialize_global_pcg(N, N, N, seed);
-    // NOTE: PCG array = (N/2) × 64 bytes = O(N) memory per rank
-    //       N=1024: 32 KB,  N=32,000: 1 MB  ← Manageable!
-    // Each rank allocates identical array (same seed → reproducible RNG)
+    // NOTE: PCG array = (N/2) x 64 bytes = O(N) memory per rank
+    //       N=1024: 32 KB,  N=32,000: 1 MB  <- Manageable!
+    // Each rank allocates identical array (same seed -> reproducible RNG)
     // All OpenMP threads within rank share this array (thread-safe: different indices)
     // Can free after Stage 1 (after slice generation)
     
@@ -716,7 +716,7 @@ int main(int argc, char **argv)
     // ZELDOVICH-PLT PARAMETERS AND POWER SPECTRUM (v15.2)
     // ========================================================================
     // Load parameters from file if provided, create PowerSpectrum object
-    // Each rank creates its own objects (same file → identical objects)
+    // Each rank creates its own objects (same file -> identical objects)
     
     ParametersHandle params = NULL;
     PowerSpectrumHandle ps = NULL;
@@ -872,7 +872,7 @@ int main(int argc, char **argv)
     // ========================================================================
     
     if (!is_idle_rank) {
-        // MEMORY: num_my_slices × narray × N² × 16 bytes (e.g., 131.2 GB for N=32K, 2 slices, narray=4)
+        // MEMORY: num_my_slices x narray x N^2 x 16 bytes (e.g., 131.2 GB for N=32K, 2 slices, narray=4)
         // Can free after Stage 3 packing complete (after send_buffer filled)
         // NEW: Single flat allocation for all arrays
         int64_t total_size = (int64_t)num_my_slices * narray * N * N;
@@ -1005,8 +1005,8 @@ int main(int argc, char **argv)
     // MULTI-BATCH PROCESSING LOOP (NEW IN MULTI-BATCH V10)
     // ========================================================================
     // Process each Y-slice pair assigned to this rank in batches
-    // Each batch: Generate → 2D FFT → Pack → Communicate → Accumulate
-    // After ALL batches: Streaming unpack → 1D FFT → Write
+    // Each batch: Generate -> 2D FFT -> Pack -> Communicate -> Accumulate
+    // After ALL batches: Streaming unpack -> 1D FFT -> Write
     
     if (rank == 0) {
         printf("\n[MULTI-BATCH] Starting batch processing...\n");
@@ -1055,12 +1055,12 @@ int main(int argc, char **argv)
             
             // Show periodic wrapping info
             if (my_extended_bounds.padded.x_start < 0) {
-                printf("  ⚠ Left wrap: X=[%d,0) wraps to X=[%d,%d) (periodic BC)\n",
+                printf("  [WARN] Left wrap: X=[%d,0) wraps to X=[%d,%d) (periodic BC)\n",
                        my_extended_bounds.padded.x_start, 
                        N + my_extended_bounds.padded.x_start, N);
             }
             if (my_extended_bounds.padded.x_end > N) {
-                printf("  ⚠ Right wrap: X=[%d,%d) wraps to X=[0,%d) (periodic BC)\n",
+                printf("  [WARN] Right wrap: X=[%d,%d) wraps to X=[0,%d) (periodic BC)\n",
                        N, my_extended_bounds.padded.x_end, 
                        my_extended_bounds.padded.x_end - N);
             }
@@ -1188,7 +1188,7 @@ int main(int argc, char **argv)
     }
     
     // ========================================================================
-    // V11: PHASE 2 - BUILD Y → (SRC, LOCAL_IDX) MAPPING
+    // V11: PHASE 2 - BUILD Y -> (SRC, LOCAL_IDX) MAPPING
     // ========================================================================
     
     if (rank == 0 && DEBUG_PRINTS) {
@@ -1264,7 +1264,7 @@ int main(int argc, char **argv)
     }
     
     if (DEBUG_PRINTS && rank < 2) {
-        printf("[V11-SETUP] Rank %d: Y-mapping complete. Sample: Y=0→src%d[%d], Y=%d→src%d[%d]\n",
+        printf("[V11-SETUP] Rank %d: Y-mapping complete. Sample: Y=0->src%d[%d], Y=%d->src%d[%d]\n",
                rank, y_owner_src[0], y_src_local_idx[0], N/2, y_owner_src[N/2], y_src_local_idx[N/2]);
     }
     
@@ -1579,7 +1579,7 @@ int main(int argc, char **argv)
         MPI_Request comm_request_batch;
         MPI_Ialltoallv(
             send_buffer_batch, sendcounts_batch, sdispls_batch, MPI_COMPLEX_TYPE,
-            recv_buffer, recvcounts_batch, rdispls_batch, MPI_COMPLEX_TYPE,  // ← V11: Changed!
+            recv_buffer, recvcounts_batch, rdispls_batch, MPI_COMPLEX_TYPE,  // <- V11: Changed!
             MPI_COMM_WORLD, &comm_request_batch
         );
         
@@ -1675,15 +1675,15 @@ int main(int argc, char **argv)
     // ========================================================================
     // NEW IN V10: STREAMING X-ROW PROCESSING (FROM ACCUMULATOR)
     // ========================================================================
-    // MEMORY: z_count × narray × N × 16 bytes (ONE X-ROW ONLY, e.g., ~4 GB for N=32K, narray=4)
-    // Memory reduced by ~80× compared to v9 (storing ONE X-row instead of ALL pencils)
+    // MEMORY: z_count x narray x N x 16 bytes (ONE X-ROW ONLY, e.g., ~4 GB for N=32K, narray=4)
+    // Memory reduced by ~80x compared to v9 (storing ONE X-row instead of ALL pencils)
     // Memory layout: [Z][Array][Y] where Z is 0 to z_count-1 (one X-row)
     
     STimer t_streaming;
     t_streaming.Start();
     
     if (rank == 0) {
-        printf("\n[Stage 3] Z-slab streaming: Unpack → FFT → Write (Zeldovich format)...\n");
+        printf("\n[Stage 3] Z-slab streaming: Unpack -> FFT -> Write (Zeldovich format)...\n");
     }
     
     // V12: Allocate local_z_slab for ONE Z-SLAB ONLY (active ranks only)
@@ -1712,7 +1712,7 @@ int main(int argc, char **argv)
                    total_bytes, total_bytes / (1024.0 * 1024.0 * 1024.0));
             printf("         Processing %d Z-slabs sequentially (Z=[%d,%d))\n", 
                    z_count, my_extended_bounds.padded.z_start, my_extended_bounds.padded.z_end);
-            printf("         Each Z-slab: %d X-values (PADDED) × %d arrays × %d Y-values\n",
+            printf("         Each Z-slab: %d X-values (PADDED) x %d arrays x %d Y-values\n",
                    x_count, narray, N);
             printf("         Output format: [Z][Array][Y][X] (Zeldovich-compatible)\n");
             printf("         NOTE: X-count includes %d padding for Abacus compatibility\n", X_PADDING);
@@ -1721,7 +1721,7 @@ int main(int argc, char **argv)
                    total_bytes, total_bytes / (1024.0 * 1024.0 * 1024.0));
             printf("         Processing %d Z-slabs sequentially (Z=[%d,%d))\n", 
                    z_count, my_extended_bounds.core.z_start, my_extended_bounds.core.z_end);
-            printf("         Each Z-slab: %d X-values (CORE) × %d arrays × %d Y-values\n",
+            printf("         Each Z-slab: %d X-values (CORE) x %d arrays x %d Y-values\n",
                    x_count, narray, N);
             printf("         Output format: [Z][Array][Y][X] (Zeldovich-compatible)\n");
 #endif
@@ -1778,11 +1778,11 @@ int main(int argc, char **argv)
                 recv_buffer,                     // Source: persistent recv_buffer
                 recv_displs_src,                 // Base offsets per source
                 src_total_slices,                // Totals per source (for API)
-                y_owner_src,                     // Y → src mapping
-                y_src_local_idx,                 // Y → local_idx mapping
-                y_batch_idx,                     // Y → batch mapping
-                y_slice_idx_in_batch,            // Y → slice_idx in batch mapping
-                src_batch_slice_counts,          // [src][batch] → slice count
+                y_owner_src,                     // Y -> src mapping
+                y_src_local_idx,                 // Y -> local_idx mapping
+                y_batch_idx,                     // Y -> batch mapping
+                y_slice_idx_in_batch,            // Y -> slice_idx in batch mapping
+                src_batch_slice_counts,          // [src][batch] -> slice count
                 global_max_batches,              // Total number of batches
                 local_z_slab,                    // Destination buffer
                 plan_1d_y                        // FFT plan
@@ -1854,7 +1854,7 @@ int main(int argc, char **argv)
                 total_bytes_written += slab_bytes;
                 
                 if (DEBUG_PRINTS && rank == 0 && files_written <= 3) {
-                    printf("[DEBUG] Rank %d: Wrote %s (%d X × %d arrays × %d Y, %.2f MB)\n", 
+                    printf("[DEBUG] Rank %d: Wrote %s (%d X x %d arrays x %d Y, %.2f MB)\n", 
                            rank, filename, x_count, narray, N, 
                            slab_bytes / (1024.0 * 1024.0));
                     printf("        Layout: [Array][Y][X] (Zeldovich AZYX compatible)\n");
@@ -1951,13 +1951,13 @@ int main(int argc, char **argv)
         
         // Calculate typical file size (varies by rank due to grid decomposition)
         // Each rank writes z_count files (one per Z-slab it owns)
-        // Each file contains: x_count X × narray arrays × N Y-values
+        // Each file contains: x_count X x narray arrays x N Y-values
         int typical_x_count = N / (int)sqrt((double)num_ranks);
         size_t typical_file_size = (size_t)typical_x_count * narray * N * sizeof(fftw_complex_t);
         int typical_files_per_rank = total_files_written / num_ranks;
         printf("          Files per rank: ~%d (z_count per rank, for %d ranks)\n", 
                typical_files_per_rank, num_ranks);
-        printf("          Each file contains one Z-slab: x_count X × %d arrays × %d Y-values\n", 
+        printf("          Each file contains one Z-slab: x_count X x %d arrays x %d Y-values\n", 
                narray, N);
         printf("          Typical file size: ~%.2f MB (varies by rank's X-extent)\n",
                typical_file_size / (1024.0 * 1024.0));
@@ -1974,7 +1974,7 @@ int main(int argc, char **argv)
     // ========================================================================
     // Verification checks real-space properties as each Z-slab is processed.
     // Statistics are accumulated across all Z-slabs and reported after completion.
-    // Verifies that final result is purely real (imaginary parts ≈ 0).
+    // Verifies that final result is purely real (imaginary parts ~= 0).
     // ========================================================================
     
     // ========================================================================

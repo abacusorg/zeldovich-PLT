@@ -4,8 +4,8 @@
 #include <mpi.h>
 #include <omp.h>
 
-// todo: add FFTW_WISDOM
-// Double: fftw_import_wisdom_file("wisdom_double.txt")
+// todo: add FFTW_WISDOM?
+// fftw_import_wisdom_file("wisdom_double.txt")
 // Export wisdom after creating plans
 
 void setup_fftw_plans_full(int N, int narray, fftw_plan_t *plan_2d_out, fftw_plan_t *plan_1d_out)

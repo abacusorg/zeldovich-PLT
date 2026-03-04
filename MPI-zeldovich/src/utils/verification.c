@@ -191,7 +191,7 @@ void verify_pencil_completeness_with_flags(char *y_filled, int pencils_per_rank,
                     global_missing);
         } else {
             if (DEBUG_PRINTS) {
-                printf("[VERIFY] Global completeness check PASSED :) (all %d arrays × %d Y-values present across all ranks)\n",
+                printf("[VERIFY] Global completeness check PASSED :) (all %d arrays x %d Y-values present across all ranks)\n",
                        narray, N);
             }
         }
@@ -200,7 +200,7 @@ void verify_pencil_completeness_with_flags(char *y_filled, int pencils_per_rank,
     // Local verification reporting
     if (missing_count == 0) {
         if (DEBUG_PRINTS || rank == 0) {
-            printf("[VERIFY] Rank %d: Local completeness check PASSED :) (all %d arrays × %d Y-values present)\n", 
+            printf("[VERIFY] Rank %d: Local completeness check PASSED :) (all %d arrays x %d Y-values present)\n", 
                    rank, narray, N);
         }
     } else {

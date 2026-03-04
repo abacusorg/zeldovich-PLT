@@ -22,7 +22,9 @@ static inline int64_t compute_virtual_position(int z, int x, int N, int Nhalf) {
     return 2 * ((int64_t)z_v * MAX_PPD + x_v); // divide by 2 later
 }
 
-// Compute z-range for thread tid using static chunking
+// manual static chunking:
+// split z = 0..N-1 range into ~equal chunks for each thread 
+// last thread may get slightly shorter chunk if N not divisible by nthreads.
 static inline void get_thread_z_range(int tid, int nthreads, int N, int* z_start, int* z_end) {
     int chunk_size = (N + nthreads - 1) / nthreads;
     *z_start = tid * chunk_size;
@@ -374,6 +376,7 @@ void generate_hermitian_slice_pair_local(
                 // Now set D=0 (after F and H are computed)
                 D[0] = 0.0;
                 D[1] = 0.0;
+
                 #else
                 // Normal operation: Compute F, G, H from D
                 // Check if PLT is enabled (fundamental already set at top of else block)
@@ -606,7 +609,7 @@ void generate_hermitian_slice_pair_local(
     } else {
         // ========== SELF-CONJUGATE: Y=0 or Y=N/2 ==========
         // Reset nskip for self-conjugate case
-        // For self-conjugate slices, we process full N×N plane (like zeldovich.cpp)
+        // For self-conjugate slices, we process full NxN plane (like zeldovich.cpp)
         if (N < MAX_PPD) {
             nskip = 0;  // Will be accumulated during loops
         } else {
@@ -650,6 +653,7 @@ void generate_hermitian_slice_pair_local(
             int64_t nskip = 0;
             for (int z = z_start; z < z_end; z++) {
 #else
+        // Non-omp-parallel: Process z range sequentially
         for (int z = 0; z < N; z++) {
             void* local_rng_buf = NULL;
 #endif
@@ -696,13 +700,13 @@ void generate_hermitian_slice_pair_local(
                 }
                 
                 int kx = (x > Nhalf) ? x - N : x;
-                int k2_int = kx*kx + ky*ky + kz*kz;  // Integer k² for k_cutoff comparison
-                double k2 = (double)k2_int;  // Floating-point k² for power spectrum
+                int k2_int = kx*kx + ky*ky + kz*kz;  // Integer k^2 for k_cutoff comparison
+                double k2 = (double)k2_int;  // Floating-point k^2 for power spectrum
                 
                 // Nyquist frequency zeroing: Force Nyquist elements to zero for all three axes
                 // This matches zeldovich.cpp line 354: abs(kx)==kmax || abs(kz)==kmax || abs(ky)==kmax
-                // The Nyquist frequency (k = N/2) is self-conjugate and doesn't have a separate partner.
-                // Due to the Y-shift in the reflected shell, we need to zero these to align mirroring expectations.
+                // The Nyquist frequency (k = N/2) is self-conjugate and doesnt have a separate partner
+                // Due to the Y-shift in the reflected shell, we need to zero these to align mirroring expectations
                 int abs_kx = (kx < 0) ? -kx : kx;
                 int is_nyquist = (abs_kx == Nhalf || abs_ky == Nhalf || abs_kz == Nhalf);
                 

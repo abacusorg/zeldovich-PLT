@@ -16,7 +16,7 @@
  *      overwriting during planning)
  *
  * 5. GRID DECOMPOSITION
- *    - get_extended_grid_bounds; my_pencils for this rank’s XZ region
+ *    - get_extended_grid_bounds; my_pencils for this rank's XZ region
  *
  * 6. PRE-COMPUTATION (V11 PERSISTENT RECV_BUFFER)
  *    - global_max_batches; src_total_slices per source; prefix-sum recv_displs_src
@@ -25,7 +25,7 @@
  *    - Allocate local_y_slices (reused per batch)
  *
  * 7. MULTI-BATCH LOOP (for each batch)
- *    a. Get batch’s (y_primary, y_mirror)
+ *    a. Get batch's (y_primary, y_mirror)
  *    b. generate_hermitian_slice_pair_local -> Generate + 2D FFT
  *    c. calculate_batch_send_recv_counts; pack_slices_to_send_buffer
  *    d. MPI_Alltoallv_c(send_buffer -> recv_buffer)
@@ -35,7 +35,7 @@
  *    - Allocate local_z_slab (one Z-slab: [Array][X][Y])
  *    - For each z: z_streaming_unpack(recv_buffer -> local_z_slab, 1D FFT in Y)
  *    - Write output: PARTICLE_OUTPUT_MODE 0 -> WriteParticlesSlab_range
- *                    PARTICLE_OUTPUT_MODE 1 -> .bin files
+ *                    PARTICLE_OUTPUT_MODE 1 -> .bin files per rank
  *                    PARTICLE_OUTPUT_MODE 2 -> .bin then read-back -> WriteParticlesSlab_range
  *
  * 9. CLEANUP
@@ -56,7 +56,7 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <execinfo.h>  
-#include <unistd.h>    // For getpid
+#include <unistd.h>   
 
 // Include PCG RNG and STimer
 #include "pcg-rng/pcg_random.hpp"
@@ -72,11 +72,6 @@ extern "C" {
 #include "config.h"
 #include "precision.h"
 #include "types.h"
-
-// CXI/libfabric requires page-aligned (base, len) for memory registration.
-// Round allocation size up to page multiple to avoid cxil_map EINVAL.
-#define PAGE_SIZE_CXI 4096
-#define ROUND_UP_PAGE(x) ((((size_t)(x)) + PAGE_SIZE_CXI - 1) & ~((size_t)(PAGE_SIZE_CXI - 1)))
 
 // --- UTILITIES ---
 #include "utils/printing.h"
@@ -129,7 +124,7 @@ int main(int argc, char **argv)
         int world_rank;
         MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
         if (world_rank == 0) {
-            fprintf(stderr, "Error: num_ranks=%d must be factorable into grid_x × grid_z.\n", num_ranks);
+            fprintf(stderr, "Error: num_ranks=%d must be factorable into grid_x x grid_z.\n", num_ranks);
             fprintf(stderr, "       Best factorization found: grid_x=%d, grid_z=%d (product=%d)\n",
                     grid_x, grid_z, grid_x * grid_z);
             fprintf(stderr, "       Please use a factorable rank count (e.g., 4, 8, 9, 16, 25, 32, 36, 64, 81, ...)\n");
@@ -152,7 +147,7 @@ int main(int argc, char **argv)
     if (rank == 0) {
         printf("========================================================================\n");
         printf("MPI Cartesian Topology Initialized\n");
-        printf("  Grid: %d × %d = %d ranks\n", grid_x, grid_z, num_ranks);
+        printf("  Grid: %d x %d = %d ranks\n", grid_x, grid_z, num_ranks);
         printf("  Periodic: [X=%s, Z=%s]\n", 
                periodic[0] ? "yes" : "no", periodic[1] ? "yes" : "no");
         printf("  Reorder: %s (hardware-aware rank assignment)\n", 
@@ -467,12 +462,10 @@ int main(int argc, char **argv)
     }
     
     // Allocate persistent recv_buffer: [src_rank][y_idx_for_src][pencil_idx][array_idx]
-    // Round size up to page multiple for CXI/libfabric memory registration (avoids cxil_map EINVAL).
     // NUMA-aware: parallel first-touch to distribute pages across NUMA nodes
     if (!is_idle_rank && recv_total_elems > 0) {
         size_t recv_bytes = sizeof(fftw_complex_t) * (size_t)recv_total_elems;
-        size_t recv_alloc = ROUND_UP_PAGE(recv_bytes);
-        if (posix_memalign((void**)&recv_buffer, ALIGN_BYTES, recv_alloc) != 0) {
+        if (posix_memalign((void**)&recv_buffer, ALIGN_BYTES, recv_bytes) != 0) {
             fprintf(stderr, "Rank %d: posix_memalign failed for recv_buffer\n", rank);
             MPI_Abort(comm_2d, 1);
         }
@@ -712,8 +705,7 @@ int main(int argc, char **argv)
         
         if (total_send_batch > 0) {
             size_t requested_bytes = (size_t)total_send_batch * sizeof(fftw_complex_t);
-            size_t alloc_bytes = ROUND_UP_PAGE(requested_bytes);
-            if (posix_memalign((void**)&send_buffer_batch, ALIGN_BYTES, alloc_bytes) != 0) {
+            if (posix_memalign((void**)&send_buffer_batch, ALIGN_BYTES, requested_bytes) != 0) {
                 fprintf(stderr, "Rank %d: posix_memalign failed for send_buffer_batch\n", rank);
                 MPI_Abort(comm_2d, 1);
             }

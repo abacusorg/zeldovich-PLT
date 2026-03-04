@@ -43,7 +43,7 @@ int zeldovich_params_get_seed(ParametersHandle params);
 // Get Pk_powerlaw_index
 double zeldovich_params_get_Pk_powerlaw_index(ParametersHandle params);
 
-// Get fundamental wavenumber (2π/BoxSize)
+// Get fundamental wavenumber (2pi/BoxSize)
 double zeldovich_params_get_fundamental(ParametersHandle params);
 
 // Get f_cluster (fraction of matter that is clustering)
@@ -80,7 +80,7 @@ int zeldovich_params_get_qdensity(ParametersHandle params);
 double zeldovich_params_get_k_cutoff(ParametersHandle params);
 
 // Get CornerModes (corner mode handling flag)
-// Returns: 0 = zero modes with k² >= k2_cutoff (default), non-zero = keep corner modes
+// Returns: 0 = zero modes with k^2 >= k2_cutoff (default), non-zero = keep corner modes
 int zeldovich_params_get_CornerModes(ParametersHandle params);
 
 // ====================================================================================

@@ -32,21 +32,21 @@
 //   axis2 = X coordinate
 //
 // LEGACY ZELDOVICH MAPPING:
-//   Legacy variable "z" → axis0 (Z)
-//   Legacy variable "y" → axis1 (Y)
-//   Legacy variable "x" → axis2 (X)
-//   Legacy out.displ[0] → axis0 displacement (Z-displacement)
-//   Legacy out.displ[1] → axis1 displacement (Y-displacement)
-//   Legacy out.displ[2] → axis2 displacement (X-displacement)
+//   Legacy variable "z" -> axis0 (Z)
+//   Legacy variable "y" -> axis1 (Y)
+//   Legacy variable "x" -> axis2 (X)
+//   Legacy out.displ[0] -> axis0 displacement (Z-displacement)
+//   Legacy out.displ[1] -> axis1 displacement (Y-displacement)
+//   Legacy out.displ[2] -> axis2 displacement (X-displacement)
 //
 // SLAB ORGANIZATION:
 //   - Write axis0-distributed slabs (Z-slabs)
-//   - Each file contains: all axis2 (X) × all axis1 (Y) for one axis0 (Z)
+//   - Each file contains: all axis2 (X) x all axis1 (Y) for one axis0 (Z)
 //   - File naming: rank_{rank}/z{z}_slab_N{N}.bin or ic_{z}.bin (after reassembly)
 //
 // MPI DATA DISTRIBUTION (after 3D FFT in MPI code):
 //   - Data is X-distributed (axis2-distributed)
-//   - Each rank owns: axis2_range × all_axis1 × all_axis0
+//   - Each rank owns: axis2_range x all_axis1 x all_axis0
 //   - For each Z-slab: each rank writes its axis2_range for all axis1
 //
 // ITERATION ORDER (for single axis0 value):
