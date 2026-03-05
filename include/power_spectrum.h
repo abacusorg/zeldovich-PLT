@@ -60,4 +60,7 @@ public:
 
     template <int Ver>
     Complx cgauss(double wavenumber, int64_t rng);
+    
+    // Get a copy of the RNG for specific Y-slice (for thread-local use)
+    pcg64 get_rng_copy(int64_t rng_index) const;
 };

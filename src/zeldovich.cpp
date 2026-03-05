@@ -443,6 +443,64 @@ void LoadPlane(
                 f         = 0.;
             }
 
+            // ========== DEBUG: Print RNG values for consistency checking ==========
+            // Match hermitian code format: [RNG-DEBUG] N=%d Y=%d (x,z)=(%d,%d): k=(%d,%d,%d) k2=%.6f | D=(%.10e,%.10e) F=(%.10e,%.10e) G=(%.10e,%.10e) H=(%.10e,%.10e)
+            // Print for test coordinates to verify RNG consistency across N
+            // Use similar logic to hermitian code: print for small coordinates and boundary coordinates
+            #ifdef DEBUG_RNG_CONSISTENCY
+            #ifndef MAX_DEBUG_COORD
+            #define MAX_DEBUG_COORD 10
+            #endif
+            #ifndef DEBUG_FULL_PRINT_MAX_N
+            #define DEBUG_FULL_PRINT_MAX_N 16
+            #endif
+            #ifndef DEBUG_SAMPLE_STRIDE
+            #define DEBUG_SAMPLE_STRIDE 10
+            #endif
+            #ifndef MAX_DEBUG_BOUNDARY_COORD
+            #define MAX_DEBUG_BOUNDARY_COORD 128
+            #endif
+            
+            int ppdhalf = ppd / 2;
+            int boundary_coord = ppdhalf - 1;  // (ppd/2)-1 for current ppd
+            // Use global Y index (y) for consistency with hermitian code which uses global_y
+            int test_boundary = (boundary_coord >= 0 && 
+                                 x == boundary_coord && y == boundary_coord && z == boundary_coord);
+            int effective_boundary = (boundary_coord <= MAX_DEBUG_BOUNDARY_COORD) ? boundary_coord : MAX_DEBUG_BOUNDARY_COORD;
+            int max_test_coord = (MAX_DEBUG_COORD > effective_boundary) ? MAX_DEBUG_COORD : effective_boundary;
+            // Check if coordinate is in test range (use global Y index y)
+            int in_test_range = (x <= max_test_coord && y <= max_test_coord && z <= max_test_coord);
+            // For large ppd, use sampling to reduce output volume
+            // Always print boundary coordinates and coordinates in small ppd range
+            int should_print = 0;
+            if (test_boundary) {
+                // Always print boundary coordinate (ppd/2)-1, (ppd/2)-1, (ppd/2)-1
+                should_print = 1;
+            } else if (ppd <= DEBUG_FULL_PRINT_MAX_N) {
+                // For small ppd, print all coordinates in test range
+                should_print = in_test_range;
+            } else {
+                // For large ppd, print only sampled coordinates 
+                if (x <= MAX_DEBUG_COORD && y <= MAX_DEBUG_COORD && z <= MAX_DEBUG_COORD) {
+                    should_print = 1;  // Print small coordinate cube
+                } else if (in_test_range) {
+                    // Sample: only print if x, y, z are multiples of stride
+                    should_print = (x % DEBUG_SAMPLE_STRIDE == 0 &&
+                                   y % DEBUG_SAMPLE_STRIDE == 0 &&
+                                   z % DEBUG_SAMPLE_STRIDE == 0);
+                }
+            }
+            if (should_print) {
+                // Note: yres is the local Y index within the block, y is the global Y index
+                // Use y (global) for consistency with hermitian code which uses global_y
+                fprintf(stderr, "[RNG-DEBUG] N=%ld Y=%d (x,z)=(%d,%d): k=(%d,%d,%d) k2=%.6f | "
+                        "D=(%.10e,%.10e) F=(%.10e,%.10e) G=(%.10e,%.10e) H=(%.10e,%.10e)\n",
+                        (long)ppd, y, x, z, kx, ky, kz, k2,
+                        real(D), imag(D), real(F), imag(F), real(G), imag(G), real(H), imag(H));
+                fflush(stderr);
+            }
+            #endif
+
             if (!just_density) {
                 // fmt::print(stderr,"{:d} {:d} {:d}   {:d} {:d} {:d}   {:f}   {:f} {:f}\n",
                 // x,y,z, kx,ky,kz, k2, real(D), imag(D));
@@ -471,8 +529,8 @@ void LoadPlane(
                        conj(G * f) + I * conj(H * f);
                 }
             } else {
-                AYZX(slab, 0, yres, z, x)             = D;
-                AYZX(slabHer, 0, yresHer, zHer, xHer) = conj(D);
+                AYZX(slab, 0, yres, z, x)             = D; // Test D+iF calculation - switch back to D
+                AYZX(slabHer, 0, yresHer, zHer, xHer) = conj(D); // Test D+iF calculation - switch back to D
             }
         }
     }  // End the x-z loops
@@ -663,6 +721,36 @@ void ZeldovichXY(BlockArray &array, Parameters &param) {
             }
         }
         fft.Stop();
+
+        // ========== DEBUG: Extract real(FFT(D + i*F)) or real(FFT(D)) for comparison ==========
+        // After 3D FFT, Array 0 contains either FFT(D + i*F) or FFT(D) depending on just_density
+        // Print real parts for test coordinates to compare between runs
+        // Enable for N <= 16 to match hermitian code debug output
+        // Always print debug check for first zblock to verify code path
+        if (zblock == 0) {
+            fprintf(stderr, "[DEBUG-CHECK] zblock=%d array.ppd=%ld array.block=%ld condition=%d\n", 
+                    zblock, (long)array.ppd, (long)array.block, (array.ppd <= 16) ? 1 : 0);
+            fflush(stderr);
+        }
+        // Remove the array.ppd check temporarily to see if code executes
+        if (zblock == 0) {
+            int just_density_flag = (param.qdensity == 2) ? 1 : 0;
+            int max_test_coord = (array.ppd <= 16) ? array.ppd : 4;
+            for (int zres = 0; zres < array.block && zres < 4; zres++) {
+                int z = zres + array.block * zblock;
+                for (int x = 0; x < max_test_coord && x < array.ppd; x++) {
+                    for (int y = 0; y < max_test_coord && y < array.ppd; y++) {
+                        // Array 0: Contains FFT(D + i*F) when just_density=false, or FFT(D) when just_density=true
+                        // Use AZYX: (array, z, y, x) - matches the slab layout after 2D FFT
+                        Complx val = AZYX(slab, 0, zres, y, x);
+                        fprintf(stderr, "[REAL-FFT-DEBUG] N=%ld just_density=%d Z=%d (x,y)=(%d,%d): "
+                                "real(Array0)=%.10e imag(Array0)=%.10e\n",
+                                array.ppd, just_density_flag, z, x, y, real(val), imag(val));
+                    }
+                }
+            }
+            fflush(stderr);
+        }
 
         // Now write out these rows of [z][y][x] positions
         // TODO: For now, we can't openMP an I/O loop.

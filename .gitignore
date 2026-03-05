@@ -12,3 +12,7 @@ build/
 .vscode/
 /subprojects/fmt*/
 /subprojects/packagecache/
+
+# Large output directories (33GB+ each)
+output/
+output_*

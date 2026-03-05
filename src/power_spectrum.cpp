@@ -363,3 +363,13 @@ Complx PowerSpectrum::cgauss<2>(double wavenumber, int64_t rng) {
 
     return Complx(g1, g2);
 }
+
+pcg64 PowerSpectrum::get_rng_copy(int64_t rng_index) const {
+    // Return a copy of the RNG for thread-local use
+    // Bounds check to ensure valid index
+    if (v2rng && rng_index >= 0 && rng_index < block) {
+        return v2rng[rng_index];  // PCG64 copy constructor
+    }
+    // Return default-constructed PCG if invalid
+    return pcg64(0);
+}
