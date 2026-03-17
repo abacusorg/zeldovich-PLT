@@ -50,8 +50,8 @@ make COMPILER_FAMILY=intel \
      CFLAGS="-DPARTICLE_OUTPUT_MODE=3 -DSKIP_FILE_WRITE=0 -DPARALLELIZE_Z_LOOP=1 -g" \
      -B
 
-if [ ! -f "./hermitian_3d_matrix" ]; then
-    echo "ERROR: Compilation failed - hermitian_3d_matrix executable not found!"
+if [ ! -f "./mpi_zeldovich" ]; then
+    echo "ERROR: Compilation failed - mpi_zeldovich executable not found!"
     exit 1
 fi
 echo "Compilation successful"
@@ -67,8 +67,8 @@ export OMP_PROC_BIND=close
 
 PPD=16
 PARAM_FILE="param_PPD16_CPD2.par"
-PARTICLE_OUTPUT_DIR="test_PPD$PPD/particle_ics_hermitian"
-RNG_LOG_DIR="test_PPD$PPD/rng_logs_hermitian"
+PARTICLE_OUTPUT_DIR="test_PPD$PPD/particle_ics_mpi_zeldovich"
+RNG_LOG_DIR="test_PPD$PPD/rng_logs_mpi_zeldovich"
 
 mkdir -p "test_PPD$PPD"
 mkdir -p "$PARTICLE_OUTPUT_DIR"
@@ -84,7 +84,7 @@ echo "=========================================="
 export HERMITIAN_RNG_DEBUG_DIR="$PWD/$RNG_LOG_DIR"
 
 mpiexec -n "$NTOTRANKS" \
-    ./hermitian_3d_matrix "$PPD" "$PARAM_FILE" \
+    ./mpi_zeldovich "$PPD" "$PARAM_FILE" \
     > "test_PPD$PPD/PPD${PPD}_CPD2_MPI${NTOTRANKS}_OMP${NTHREADS_PER_RANK}_mode3_generation.log" \
     2> "test_PPD$PPD/rng_logs_hermitian/hermitian_stderr.log"
 

@@ -128,7 +128,7 @@ MODULE_SRC = src/fft/fft_setup.c \
 
 OUTPUT_SRC = src/output/output_new.cpp
 
-TARGET = hermitian_3d_matrix
+TARGET = mpi_zeldovich
 
 # ============================================================================
 # BUILD RULES
