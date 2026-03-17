@@ -1,0 +1,99 @@
+#!/bin/bash
+#PBS -N 2_16_m3_2
+#PBS -A AbacusAurora
+#PBS -l select=2:ncpus=2:mpiprocs=1:ompthreads=2
+#PBS -l walltime=00:05:00
+#PBS -q debug-scaling
+#PBS -l filesystems=home
+#PBS -m abe
+#PBS -j oe
+#PBS -o test_PPD16/PPD16_CPD2_MPI9_OMP2_mode3.out
+
+# Mode 3: direct particle IC output (no reassembly) for PPD=16, CPD=2.
+
+set -e
+
+WORK_DIR="."
+cd "$WORK_DIR"
+
+# Remove old outputs
+if [ -d "ic" ]; then rm -rf ic; fi
+rm -f ./*.log ./*.out
+
+# Load modules
+module load frameworks
+module load fftw/3.3.10
+
+# Point to the FFTW install used with the Intel toolchain
+# Set this to the actual FFTW prefix from your module/environment.
+# It should contain:
+#   $FFTW_DIR/include/fftw3.h
+#   $FFTW_DIR/lib/libfftw3f_omp.so  (or libfftw3_omp.so for double precision)
+FFTW_DIR="${FFTW_DIR:-/path/to/intel-built-fftw}"
+
+# Optional sanity checks
+if [ ! -f "$FFTW_DIR/include/fftw3.h" ]; then
+    echo "ERROR: FFTW header not found at $FFTW_DIR/include/fftw3.h"
+    exit 1
+fi
+
+if [ ! -f "$FFTW_DIR/lib/libfftw3f_omp.so" ]; then
+    echo "ERROR: FFTW OpenMP library not found at $FFTW_DIR/lib/libfftw3f_omp.so"
+    echo "       If building in double precision, check for libfftw3_omp.so instead."
+    exit 1
+fi
+
+# Compile
+make clean
+make COMPILER_FAMILY=intel \
+     FFTW_DIR="$FFTW_DIR" \
+     CFLAGS="-DPARTICLE_OUTPUT_MODE=3 -DSKIP_FILE_WRITE=0 -DPARALLELIZE_Z_LOOP=1 -g" \
+     -B
+
+if [ ! -f "./hermitian_3d_matrix" ]; then
+    echo "ERROR: Compilation failed - hermitian_3d_matrix executable not found!"
+    exit 1
+fi
+echo "Compilation successful"
+
+NNODES=2
+NRANKS_PER_NODE=1
+NTHREADS_PER_RANK=2
+NTOTRANKS=2
+
+export OMP_NUM_THREADS="$NTHREADS_PER_RANK"
+export OMP_PLACES=cores
+export OMP_PROC_BIND=close
+
+PPD=16
+PARAM_FILE="param_PPD16_CPD2.par"
+PARTICLE_OUTPUT_DIR="test_PPD$PPD/particle_ics_hermitian"
+RNG_LOG_DIR="test_PPD$PPD/rng_logs_hermitian"
+
+mkdir -p "test_PPD$PPD"
+mkdir -p "$PARTICLE_OUTPUT_DIR"
+mkdir -p "$RNG_LOG_DIR"
+
+echo ""
+echo "=========================================="
+echo "STEP 2: Generating particle ICs (mode 3: direct write to ic/, PPD=$PPD, CPD=2, ranks=$NTOTRANKS, threads=$NTHREADS_PER_RANK)"
+echo "         Using ZD_qdensity=1 (density + displs, narray=4)"
+echo "         PLT rescaling ENABLED"
+echo "=========================================="
+
+export HERMITIAN_RNG_DEBUG_DIR="$PWD/$RNG_LOG_DIR"
+
+mpiexec -n "$NTOTRANKS" \
+    ./hermitian_3d_matrix "$PPD" "$PARAM_FILE" \
+    > "test_PPD$PPD/PPD${PPD}_CPD2_MPI${NTOTRANKS}_OMP${NTHREADS_PER_RANK}_mode3_generation.log" \
+    2> "test_PPD$PPD/rng_logs_hermitian/hermitian_stderr.log"
+
+IC_COUNT=$(find "$PARTICLE_OUTPUT_DIR" -type f \( -name "ic_*" -o -path "*/ic/*" \) 2>/dev/null | wc -l)
+echo "Generated $IC_COUNT particle IC files / segments under $PARTICLE_OUTPUT_DIR"
+
+echo ""
+echo "=========================================="
+echo "Mode 3 run complete ($NNODES nodes, 1 rank/node, $NTHREADS_PER_RANK threads/rank, PPD=$PPD, CPD=2, PLT enabled)"
+echo "=========================================="
+echo "  Particle IC files: $IC_COUNT"
+echo "  Logs: test_PPD$PPD/"

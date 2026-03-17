@@ -1,0 +1,33 @@
+# An example zeldovich parameter file.
+# See the README for parameter descriptions
+# For N=16 grid with power law power spectrum
+# Test: N=16, CPD=2, PLT ENABLED, rescaling ENABLED
+
+BoxSize = 100.0
+CPD = 2
+ICFormat = "RVZel"
+InitialConditionsDirectory = "ic"
+InitialRedshift = 99.0
+NP = 4096 # PPD^3
+ZD_NumBlock = 2 # not used
+ZD_Seed = 4
+ZD_Pk_scale = 1.0
+ZD_Pk_norm = 8.0
+ZD_Pk_sigma = 1.0
+ZD_Pk_smooth = 0.0
+ZD_Pk_powerlaw_index = -2.0
+ZD_Version = 2
+ZD_qPk_fix_to_mean = 0
+ZD_f_NL = 0
+ZD_qdensity = 1
+
+ZD_k_cutoff = 1.0
+ZD_CornerModes = 0
+
+ZD_qPLT = 1
+ZD_qPLTrescale = 1
+ZD_PLT_target_z = 0.0
+ZD_PLT_filename = "eigmodes128"
+
+ZD_grid_x = 2
+ZD_grid_z = 1
