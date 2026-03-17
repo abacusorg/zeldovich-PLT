@@ -1,0 +1,20 @@
+# zeldovich-PLT Parameter File Template
+# For N=256 grid with power law power spectrum
+# Usage: ./hermitian_3d_matrix 256 examples/param_template.par
+
+BoxSize = 100.0
+CPD = 256                          # Cells per dimension (= N)
+ICFormat = "RV"
+InitialConditionsDirectory = "./output"
+InitialRedshift = 99.0
+NP = 16777216                      # N^3 = 256^3
+ZD_NumBlock = 2
+ZD_Seed = 4                        # Random seed
+ZD_Pk_scale = 1.0
+ZD_Pk_norm = 8.0                   # Normalization scale (e.g., sigma_8)
+ZD_Pk_sigma = 1.0                  # Amplitude at normalization scale (required when Pk_norm > 0)
+ZD_Pk_smooth = 0.0
+ZD_Pk_powerlaw_index = -2.0        # Power law: P(k) ~ k^-2
+ZD_Version = 2                     # Use version 2 (recommended)
+ZD_qPk_fix_to_mean = 0            # Random amplitude (not fixed)
+

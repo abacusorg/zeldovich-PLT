@@ -85,4 +85,3 @@ void timespecsub(struct timespec *a, struct timespec *b, struct timespec *res) {
         res->tv_nsec -= NSEC_PER_SEC;
     }
 }
-
