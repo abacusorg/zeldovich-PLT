@@ -20,7 +20,7 @@ make clean
 make
 ```
 
-This produces the `zeldovich_MPI` executable in this directory.
+This produces the `mpi_zeldovich` executable in this directory.
 
 ### Running
 
