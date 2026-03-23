@@ -146,7 +146,7 @@ OUTPUT_SRC = src/output/output_new.cpp
 REASSEMBLY_SRC = src/write_particles_from_reassembled_mpi.cpp
 
 # Output binaries
-TARGET = zeldovich_MPI
+TARGET = mpi_zeldovich
 
 # ====================================================================================
 # BUILD RULES
