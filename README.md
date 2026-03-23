@@ -15,11 +15,12 @@ Generating particle initial conditions using zeldovich-PLT with MPI.
 - **Build command**
 
 ```bash
-cd zeldovich-PLT
-make FFTW_DIR=/path/to/fftw          # add COMPILER_FAMILY=... and CFLAGS=... as needed
+cd zeldovich-MPI
+make clean
+make
 ```
 
-This produces the `mpi_zeldovich` executable in this directory.
+This produces the `zeldovich_MPI` executable in this directory.
 
 ### Running
 
