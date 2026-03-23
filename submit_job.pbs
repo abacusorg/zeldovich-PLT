@@ -83,10 +83,10 @@ echo "=========================================="
 
 export HERMITIAN_RNG_DEBUG_DIR="$PWD/$RNG_LOG_DIR"
 
-mpiexec -n "$NTOTRANKS" \
-    ./mpi_zeldovich "$PPD" "$PARAM_FILE" \
-    > "test_PPD$PPD/PPD${PPD}_CPD2_MPI${NTOTRANKS}_OMP${NTHREADS_PER_RANK}_mode3_generation.log" \
-    2> "test_PPD$PPD/rng_logs_hermitian/hermitian_stderr.log"
+mpiexec -n $NTOTRANKS --ppn 1 --depth=$NTHREADS_PER_RANK --cpu-bind depth \
+        --env OMP_NUM_THREADS=$NTHREADS_PER_RANK --env OMP_PLACES=cores --env OMP_PROC_BIND=close \
+        ./mpi_zeldovich $PPD "$PARAM_FILE" \
+        > "test_PPD$PPD/rng_logs_hermitian/hermitian_stderr.log"
 
 IC_COUNT=$(find "$PARTICLE_OUTPUT_DIR" -type f \( -name "ic_*" -o -path "*/ic/*" \) 2>/dev/null | wc -l)
 echo "Generated $IC_COUNT particle IC files / segments under $PARTICLE_OUTPUT_DIR"
