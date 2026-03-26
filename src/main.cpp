@@ -99,7 +99,18 @@ MPI_Comm comm_2d;
 // --- MAIN ---
 int main(int argc, char **argv)
 {
-    MPI_Init(&argc, &argv);
+    int provided;
+    int required = MPI_THREAD_FUNNELED;
+    int ret = MPI_Init_thread(NULL, NULL, required, &provided);
+    if (ret != MPI_SUCCESS) {
+        fprintf(stderr, "MPI_Init_thread failed with error code %d\n", ret);
+        return 1;
+    }
+    if (provided < required) {
+        fprintf(stderr, "FATAL: MPI provides thread level %d, need %d (MPI_THREAD_FUNNELED). Hybrid MPI+OMP will scale badly.\n", provided, required);
+        MPI_Finalize();
+        return 1;
+    }
 
     int num_ranks;
     MPI_Comm_size(MPI_COMM_WORLD, &num_ranks);
@@ -891,7 +902,8 @@ int main(int argc, char **argv)
         local_z_slab = NULL;
     }
     
-    // Create directory for this rank (before Z-loop)
+    // Create directory for this rank (before Z-loop) -- only needed for Mode 1/2 (.bin files)
+#if (PARTICLE_OUTPUT_MODE != 3)
     char dirname[64];
     snprintf(dirname, sizeof(dirname), "rank_%d", rank);
     int mkdir_result = mkdir(dirname, 0755);
@@ -899,20 +911,22 @@ int main(int argc, char **argv)
         fprintf(stderr, "Rank %d: ERROR creating directory %s (errno=%d)\n", rank, dirname, errno);
         MPI_Abort(comm_2d, 1);
     }
-    
+#endif
     // Process one Z-slab at a time (Zeldovich-compatible)
     int files_written = 0;
     size_t total_bytes_written = 0;
     
-    // MODE 3: One file per x-slab, written under ic/ with optional zNNN split
+    // MODE 3: file vectors for x-slab format (grid_x>1) or z-group format (grid_x==1)
     int slab_x_start = 0, slab_x_end = 0;
     std::vector<FILE*> slab_fp;
     std::vector<FILE*> slab_dens_fp;
+
+    int zgrp_start = 0, zgrp_end = 0;
+    std::vector<FILE*> zgrp_fp;
+    std::vector<FILE*> zgrp_dens_fp;
     
     if (PARTICLE_OUTPUT_MODE == 3 && params != NULL && !is_idle_rank) {
         Parameters *p = static_cast<Parameters*>(params);
-        slab_x_start = (rank_x * cpd) / grid_x;
-        slab_x_end   = ((rank_x + 1) * cpd) / grid_x;
 
         char ic_dir[PATH_MAX];
         snprintf(ic_dir, sizeof(ic_dir), "%s/ic", p->output_dir.c_str());
@@ -921,60 +935,127 @@ int main(int argc, char **argv)
             fprintf(stderr, "Rank %d: ERROR creating directory %s (errno=%d)\n", rank, ic_dir, errno);
             MPI_Abort(comm_2d, 1);
         }
-
-        char z_dir[PATH_MAX];
-        z_dir[0] = '\0';
-        if (grid_z > 1) {
-            snprintf(z_dir, sizeof(z_dir), "%s/ic/z%03d", p->output_dir.c_str(), rank_z);
-            int mkdir_z = mkdir(z_dir, 0755);
-            if (mkdir_z != 0 && errno != EEXIST) {
-                fprintf(stderr, "Rank %d: ERROR creating directory %s (errno=%d)\n", rank, z_dir, errno);
+        // dens/ subdir for _dens files (parallel to ic/)
+        if (p->qdensity) {
+            char dens_dir[PATH_MAX];
+            snprintf(dens_dir, sizeof(dens_dir), "%s/dens", p->output_dir.c_str());
+            int mkdir_dens = mkdir(dens_dir, 0755);
+            if (mkdir_dens != 0 && errno != EEXIST) {
+                fprintf(stderr, "Rank %d: ERROR creating directory %s (errno=%d)\n", rank, dens_dir, errno);
                 MPI_Abort(comm_2d, 1);
             }
         }
-        
-        slab_fp.resize(slab_x_end - slab_x_start, NULL);
-        slab_dens_fp.resize(slab_x_end - slab_x_start, NULL);
-        
-        // build paths for each x-slab in my rank
-        for (int s = slab_x_start; s < slab_x_end; s++) {
-            char fp_path[PATH_MAX];
-            if (grid_z > 1) {
-                snprintf(fp_path, sizeof(fp_path), "%s/ic/z%03d/ic_%04d_z%03d",
-                         p->output_dir.c_str(), rank_z, s, rank_z);
-            } else {
+
+        if (grid_x == 1) {
+            // ---------------------------------------------------------------
+            // grid_x==1: z-group file mapping (zeldovich-compatible)
+            // Each z-rank writes CPD/grid_z files: ic/ic_{file_index:04d}
+            // file_index = z * CPD / N, each file holds N/CPD z-planes.
+            // ---------------------------------------------------------------
+            int s_z_start = (rank_z * cpd) / grid_z;
+            int s_z_end   = ((rank_z + 1) * cpd) / grid_z;
+            zgrp_start = s_z_start;
+            zgrp_end   = s_z_end;
+
+            zgrp_fp.resize(zgrp_end - zgrp_start, NULL);
+            zgrp_dens_fp.resize(zgrp_end - zgrp_start, NULL);
+
+            for (int f = zgrp_start; f < zgrp_end; f++) {
+                char fp_path[PATH_MAX];
                 snprintf(fp_path, sizeof(fp_path), "%s/ic/ic_%04d",
-                         p->output_dir.c_str(), s);
+                         p->output_dir.c_str(), f);
+                zgrp_fp[f - zgrp_start] = fopen(fp_path, "wb");
+                if (!zgrp_fp[f - zgrp_start]) {
+                    fprintf(stderr, "Rank %d: ERROR opening %s for writing (errno=%d)\n",
+                            rank, fp_path, errno);
+                }
+                if (p->qdensity && zgrp_fp[f - zgrp_start] != NULL) {
+                    char fd_path[PATH_MAX];
+                    snprintf(fd_path, sizeof(fd_path), "%s/dens/dens_%04d",
+                             p->output_dir.c_str(), f);
+                    zgrp_dens_fp[f - zgrp_start] = fopen(fd_path, "wb");
+                    if (!zgrp_dens_fp[f - zgrp_start]) {
+                        fprintf(stderr, "Rank %d: ERROR opening %s for density (errno=%d)\n",
+                                rank, fd_path, errno);
+                    }
+                }
             }
-            slab_fp[s - slab_x_start] = fopen(fp_path, "wb");
-            if (!slab_fp[s - slab_x_start]) {
-                fprintf(stderr, "Rank %d: ERROR opening %s for writing (errno=%d)\n",
-                        rank, fp_path, errno);
+
+            if (rank == 0) {
+                printf("[MODE 3] grid_x==1, z-group format (zeldovich-compatible): cpd=%d, files_per_rank=%d, ic/ic_%%04d\n",
+                       cpd, zgrp_end - zgrp_start);
+                printf("         Each file holds %d z-planes of %d x %d particles\n",
+                       N / cpd, N, N);
             }
-            if (p->qdensity && slab_fp[s - slab_x_start] != NULL) {
-                char fd_path[PATH_MAX];
+        } else {
+            // ---------------------------------------------------------------
+            // grid_x>1: x-slab file mapping (existing Mode 3)
+            // ---------------------------------------------------------------
+            slab_x_start = (rank_x * cpd) / grid_x;
+            slab_x_end   = ((rank_x + 1) * cpd) / grid_x;
+
+            char z_dir[PATH_MAX];
+            z_dir[0] = '\0';
+            if (grid_z > 1) {
+                snprintf(z_dir, sizeof(z_dir), "%s/ic/z%03d", p->output_dir.c_str(), rank_z);
+                int mkdir_z = mkdir(z_dir, 0755);
+                if (mkdir_z != 0 && errno != EEXIST) {
+                    fprintf(stderr, "Rank %d: ERROR creating directory %s (errno=%d)\n", rank, z_dir, errno);
+                    MPI_Abort(comm_2d, 1);
+                }
+                if (p->qdensity) {
+                    char dens_z_dir[PATH_MAX];
+                    snprintf(dens_z_dir, sizeof(dens_z_dir), "%s/dens/z%03d", p->output_dir.c_str(), rank_z);
+                    int mkdir_dens_z = mkdir(dens_z_dir, 0755);
+                    if (mkdir_dens_z != 0 && errno != EEXIST) {
+                        fprintf(stderr, "Rank %d: ERROR creating directory %s (errno=%d)\n", rank, dens_z_dir, errno);
+                        MPI_Abort(comm_2d, 1);
+                    }
+                }
+            }
+
+            slab_fp.resize(slab_x_end - slab_x_start, NULL);
+            slab_dens_fp.resize(slab_x_end - slab_x_start, NULL);
+
+            for (int s = slab_x_start; s < slab_x_end; s++) {
+                char fp_path[PATH_MAX];
                 if (grid_z > 1) {
-                    snprintf(fd_path, sizeof(fd_path), "%s/ic/z%03d/ic_%04d_z%03d_dens",
+                    snprintf(fp_path, sizeof(fp_path), "%s/ic/z%03d/ic_%04d_z%03d",
                              p->output_dir.c_str(), rank_z, s, rank_z);
                 } else {
-                    snprintf(fd_path, sizeof(fd_path), "%s/ic/ic_%04d_dens",
+                    snprintf(fp_path, sizeof(fp_path), "%s/ic/ic_%04d",
                              p->output_dir.c_str(), s);
                 }
-                slab_dens_fp[s - slab_x_start] = fopen(fd_path, "wb");
-                if (!slab_dens_fp[s - slab_x_start]) {
-                    fprintf(stderr, "Rank %d: ERROR opening %s for density (errno=%d)\n",
-                            rank, fd_path, errno);
+                slab_fp[s - slab_x_start] = fopen(fp_path, "wb");
+                if (!slab_fp[s - slab_x_start]) {
+                    fprintf(stderr, "Rank %d: ERROR opening %s for writing (errno=%d)\n",
+                            rank, fp_path, errno);
+                }
+                if (p->qdensity && slab_fp[s - slab_x_start] != NULL) {
+                    char fd_path[PATH_MAX];
+                    if (grid_z > 1) {
+                        snprintf(fd_path, sizeof(fd_path), "%s/dens/z%03d/dens_%04d",
+                                 p->output_dir.c_str(), rank_z, s);
+                    } else {
+                        snprintf(fd_path, sizeof(fd_path), "%s/dens/dens_%04d",
+                                 p->output_dir.c_str(), s);
+                    }
+                    slab_dens_fp[s - slab_x_start] = fopen(fd_path, "wb");
+                    if (!slab_dens_fp[s - slab_x_start]) {
+                        fprintf(stderr, "Rank %d: ERROR opening %s for density (errno=%d)\n",
+                                rank, fd_path, errno);
+                    }
                 }
             }
-        }
-        
-        if (rank == 0) {
-            if (grid_z > 1) {
-                printf("[MODE 3] One file per x-slab and z-rank: cpd=%d, slabs_per_rank=%d, ic/z%%03d/ic_%%04d_z%%03d\n",
-                       cpd, slab_x_end - slab_x_start);
-            } else {
-                printf("[MODE 3] One file per x-slab: cpd=%d, slabs_per_rank=%d, ic/ic_%%04d\n",
-                       cpd, slab_x_end - slab_x_start);
+
+            if (rank == 0) {
+                if (grid_z > 1) {
+                    printf("[MODE 3] One file per x-slab and z-rank: cpd=%d, slabs_per_rank=%d, ic/z%%03d/ic_%%04d_z%%03d\n",
+                           cpd, slab_x_end - slab_x_start);
+                } else {
+                    printf("[MODE 3] One file per x-slab: cpd=%d, slabs_per_rank=%d, ic/ic_%%04d\n",
+                           cpd, slab_x_end - slab_x_start);
+                }
             }
         }
     }
@@ -1222,34 +1303,46 @@ int main(int argc, char **argv)
                 }
                 
                 case 3: {
-                    // =======================================================================================
-                    // MODE 3: One file per x-slab; each file stores all z segments for that slab
-                    // =======================================================================================
-                    for (int s = slab_x_start; s < slab_x_end; s++) {
-                        FILE *fp = slab_fp[s - slab_x_start];
-                        FILE *fp_dens = slab_dens_fp[s - slab_x_start];
-                        if (fp == NULL) continue;
-                        
-                        AppendSlabZSegment(
-                            fp,
-                            fp_dens,
-                            s,
-                            cpd,
-                            z,
-                            my_extended_bounds.core.x_start,
-                            x_count,
-                            local_z_slab,
-                            N,
-                            narray,
-                            *static_cast<Parameters*>(params)
-                        );
+                    if (grid_x == 1) {
+                        // ===========================================================================
+                        // grid_x==1: z-group format — one full NxN plane per z (zeldovich-compatible)
+                        // ===========================================================================
+                        int file_index = z * cpd / N;
+                        FILE *fp = zgrp_fp[file_index - zgrp_start];
+                        FILE *fp_dens = (file_index - zgrp_start < (int)zgrp_dens_fp.size())
+                                        ? zgrp_dens_fp[file_index - zgrp_start] : NULL;
+                        if (fp != NULL) {
+                            AppendZSlabFull(
+                                fp, fp_dens, z,
+                                my_extended_bounds.core.x_start, x_count,
+                                local_z_slab, N, narray,
+                                *static_cast<Parameters*>(params)
+                            );
+                        }
+                        total_bytes_written += (size_t)N * N * sizeof(RVZelParticle);
+                        if (static_cast<Parameters*>(params)->qdensity)
+                            total_bytes_written += (size_t)N * N * sizeof(float);
+                    } else {
+                        // ===========================================================================
+                        // grid_x>1: x-slab format — one segment per slab per z
+                        // ===========================================================================
+                        for (int s = slab_x_start; s < slab_x_end; s++) {
+                            FILE *fp = slab_fp[s - slab_x_start];
+                            FILE *fp_dens = slab_dens_fp[s - slab_x_start];
+                            if (fp == NULL) continue;
+
+                            AppendSlabZSegment(
+                                fp, fp_dens, s, cpd, z,
+                                my_extended_bounds.core.x_start, x_count,
+                                local_z_slab, N, narray,
+                                *static_cast<Parameters*>(params)
+                            );
+                        }
+                        int ox_total = my_extended_bounds.core.x_end - my_extended_bounds.core.x_start;
+                        total_bytes_written += (size_t)ox_total * N * sizeof(RVZelParticle);
+                        if (static_cast<Parameters*>(params)->qdensity)
+                            total_bytes_written += (size_t)ox_total * N * sizeof(float);
                     }
-                    
-                    int ox_total = my_extended_bounds.core.x_end - my_extended_bounds.core.x_start;
-                    total_bytes_written += (size_t)ox_total * N * sizeof(RVZelParticle);
-                    if (static_cast<Parameters*>(params)->qdensity)
-                        total_bytes_written += (size_t)ox_total * N * sizeof(float);
-                    
                     break;
                 }
                 
@@ -1276,19 +1369,25 @@ int main(int argc, char **argv)
     }
     // Idle ranks: files_written = 0, total_bytes_written = 0 (already initialized)
     
-    // MODE 3: Close slab files and set file count
+    // MODE 3: Close files and set file count
     if (PARTICLE_OUTPUT_MODE == 3 && params != NULL) {
-        for (size_t i = 0; i < slab_fp.size(); i++) {
-            if (slab_fp[i] != NULL) {
-                fclose(slab_fp[i]);
-                slab_fp[i] = NULL;
+        if (grid_x == 1) {
+            for (size_t i = 0; i < zgrp_fp.size(); i++) {
+                if (zgrp_fp[i] != NULL) { fclose(zgrp_fp[i]); zgrp_fp[i] = NULL; }
+                if (i < zgrp_dens_fp.size() && zgrp_dens_fp[i] != NULL) {
+                    fclose(zgrp_dens_fp[i]); zgrp_dens_fp[i] = NULL;
+                }
             }
-            if (i < slab_dens_fp.size() && slab_dens_fp[i] != NULL) {
-                fclose(slab_dens_fp[i]);
-                slab_dens_fp[i] = NULL;
+            files_written = zgrp_end - zgrp_start;
+        } else {
+            for (size_t i = 0; i < slab_fp.size(); i++) {
+                if (slab_fp[i] != NULL) { fclose(slab_fp[i]); slab_fp[i] = NULL; }
+                if (i < slab_dens_fp.size() && slab_dens_fp[i] != NULL) {
+                    fclose(slab_dens_fp[i]); slab_dens_fp[i] = NULL;
+                }
             }
+            files_written = slab_x_end - slab_x_start;
         }
-        files_written = slab_x_end - slab_x_start;
         MPI_Barrier(comm_2d);
     }
     

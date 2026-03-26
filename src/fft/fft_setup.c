@@ -1,12 +1,11 @@
 #include "fft_setup.h"
+#ifdef USE_FFTW_WISDOM
+#include "fft_wisdom.h"
+#endif
 #include <stdlib.h>
 #include <stdio.h>
 #include <mpi.h>
 #include <omp.h>
-
-// todo: add FFTW_WISDOM?
-// fftw_import_wisdom_file("wisdom_double.txt")
-// Export wisdom after creating plans
 
 void setup_fftw_plans_full(int N, int narray, fftw_complex_t *plan_buffer,
                            fftw_plan_t *plan_2d_out, fftw_plan_t *plan_1d_out)
@@ -15,6 +14,12 @@ void setup_fftw_plans_full(int N, int narray, fftw_complex_t *plan_buffer,
     fftw_complex_t *dummy_1d = NULL;
     int rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+#ifdef USE_FFTW_WISDOM
+    // Import FFTW wisdom on rank 0 and broadcast to all ranks so every
+    // process starts from an identical planner state
+    fft_wisdom_import_broadcast(rank, MPI_COMM_WORLD);
+#endif
 
     // Ensure N^2 * sizeof(fftw_complex_t) is a multiple of 64 for AVX-512 alignment
     // of consecutive arrays in plan_many_dft (N divisible by 4 is sufficient)
@@ -88,10 +93,17 @@ void setup_fftw_plans_full(int N, int narray, fftw_complex_t *plan_buffer,
     
     free(dummy_1d);
     
-    // Ceck plan creation
+    // Check plan creation
     if (*plan_2d_out == NULL || *plan_1d_out == NULL) {
         fprintf(stderr, "[ERROR] Failed to create FFT plans (one or both plans are NULL)\n");
         MPI_Abort(MPI_COMM_WORLD, 1);
     }
+
+#ifdef USE_FFTW_WISDOM
+    // After successful plan creation (and any warm-up executes outside this
+    // function), rank 0 exports the accumulated wisdom back to disk so
+    // subsequent runs can reuse it.
+    fft_wisdom_export_rank0(rank);
+#endif
 }
 

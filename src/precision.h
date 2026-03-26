@@ -27,6 +27,11 @@
     #define FFTW_DESTROY_PLAN fftw_destroy_plan
     #define FFTW_MALLOC fftw_malloc
     #define FFTW_FREE fftw_free
+    #define FFTW_IMPORT_WISDOM_FROM_FILENAME fftw_import_wisdom_from_filename
+    #define FFTW_EXPORT_WISDOM_TO_FILENAME   fftw_export_wisdom_to_filename
+    #define FFTW_EXPORT_WISDOM_TO_STRING     fftw_export_wisdom_to_string
+    #define FFTW_IMPORT_WISDOM_FROM_STRING   fftw_import_wisdom_from_string
+    #define FFTW_FORGET_WISDOM               fftw_forget_wisdom
     
     // MPI
     #define MPI_COMPLEX_TYPE MPI_C_DOUBLE_COMPLEX
@@ -56,6 +61,11 @@
     #define FFTW_DESTROY_PLAN fftwf_destroy_plan
     #define FFTW_MALLOC fftwf_malloc
     #define FFTW_FREE fftwf_free
+    #define FFTW_IMPORT_WISDOM_FROM_FILENAME fftwf_import_wisdom_from_filename
+    #define FFTW_EXPORT_WISDOM_TO_FILENAME   fftwf_export_wisdom_to_filename
+    #define FFTW_EXPORT_WISDOM_TO_STRING     fftwf_export_wisdom_to_string
+    #define FFTW_IMPORT_WISDOM_FROM_STRING   fftwf_import_wisdom_from_string
+    #define FFTW_FORGET_WISDOM               fftwf_forget_wisdom
     
     // MPI
     #define MPI_COMPLEX_TYPE MPI_C_FLOAT_COMPLEX
