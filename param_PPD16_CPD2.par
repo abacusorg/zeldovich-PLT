@@ -31,3 +31,6 @@ ZD_PLT_filename = "eigmodes128"
 
 ZD_grid_x = 2
 ZD_grid_z = 1
+
+# Future:
+# ZD_NumZRanks = 2

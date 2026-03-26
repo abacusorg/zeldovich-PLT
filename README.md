@@ -47,14 +47,14 @@ Cosmological and PLT-related quantities (e.g. `ZD_Seed`, `ZD_Pk_*`, `ZD_qPLT`, `
 
 The total number of MPI ranks you launch should be compatible with this decomposition (and with any implicit decomposition in the remaining direction). These parameters control how slabs are distributed across ranks:
 
-- **1D outputs**: Set `ZD_grid_z = 1`. All slabs share a single \(z\)-rank and the output directory layout is effectively 1D in \(x\).
+- **1D outputs**: Set `ZD_grid_x = 1`. All slabs share a single \(x\)-rank and the output directory layout is effectively 1D in \(z\).
 - **2D outputs**: Require `ZD_grid_z > 1`. Each \(z\)-rank writes its own subset of slabs in separate subdirectories (see below).
 
 ### IC Output format
 
-In **Mode 3**, the code writes per–x-slab particle ICs. The output directory structure depends on the \(z\)-grid:
+In **Mode 3**, the code writes per–x-slab particle ICs. The output directory structure is either 1D in 'z' or 2D in 'x' and 'z':
 
-- **`ZD_grid_z == 1`**
+- **`ZD_grid_x == 1`**
   - All slabs are written directly under the IC directory:
     - `ic/ic_{slab:04d}`
 
@@ -80,4 +80,8 @@ Records in a file are written in the following order:
 3. For each \((z, y)\), iterate over slab-local `k`.
 
 This ordering should be taken into account when post-processing or converting the ICs.
+
+# EDIT: Will update to using ZD_NumZRanks 
+- For future, the parameter file will only use  'ZD_NumZRanks' , with fallback to 'NumZRanks' (i.e. the Abacus value) if not set. 
+- Internally, 'ZD_grid_x' can be computed from 'ZD_NumZRanks' and the 'COMM_WORLD' size, with an error if the division is not even.
 
