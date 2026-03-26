@@ -112,6 +112,7 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    // Future: Use
     int num_ranks;
     MPI_Comm_size(MPI_COMM_WORLD, &num_ranks);
     int world_rank;
@@ -176,6 +177,9 @@ int main(int argc, char **argv)
     // ========================================================================
     // MPI Cartesian Topology Setup (writer-specified grid from param file)
     // ========================================================================
+    // Future: Use ZD_NumZRanks from param file and num_ranks (from MPI_COMM_WORLD, which is from MPI runtime flag -n) to compute grid_x.
+    // e.g if ZD_NumZRanks = 6 and num_ranks = 6, then grid_x = 1 and grid_z = 6 (1D in z).
+    // if ZD_NumZRanks = 6 and num_ranks = 3, then grid_x = 2 and grid_z = 3 (2D in x and z).
     int grid_x, grid_z;
     grid_x = zeldovich_params_get_grid_x(params);
     grid_z = zeldovich_params_get_grid_z(params);
