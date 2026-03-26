@@ -50,7 +50,7 @@ The total number of MPI ranks you launch should be compatible with this decompos
 - **1D outputs**: Set `ZD_grid_z = 1`. All slabs share a single \(z\)-rank and the output directory layout is effectively 1D in \(x\).
 - **2D outputs**: Require `ZD_grid_z > 1`. Each \(z\)-rank writes its own subset of slabs in separate subdirectories (see below).
 
-### Mode 3 output format
+### IC Output format
 
 In **Mode 3**, the code writes per–x-slab particle ICs. The output directory structure depends on the \(z\)-grid:
 
