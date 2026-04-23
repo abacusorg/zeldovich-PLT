@@ -121,5 +121,26 @@ void AppendZSlabFull(
     Parameters &param
 );
 
+// ====================================================================================
+// MODE 4: One file per z-slab, in per-rank_x subdirs (dual of Mode 3 grid_x>1)
+// ====================================================================================
+//
+// CPD-aligned slabs along Z (instead of X). On-disk layout: ic/z%03d/ic_%04d_z%03d (z_ matches readers).
+// Each call writes this rank's x-extent x all Y at one global z to the z-slab file.
+// Indices: i=z (global), j=y (global), k=x (global).
+// Particle ordering: y-outer, x-inner within each z-append.
+
+void AppendZSlabSegment_M4(
+    FILE *fp,                 // This z-slab's particle file (caller owns)
+    FILE *fp_dens,            // This z-slab's density file, or NULL
+    int z,                    // Global z index
+    int k_start_global,       // This rank's core.x_start
+    int k_extent,             // This rank's x_count
+    fftw_complex_t *slab_data,
+    int N,
+    int narray,
+    Parameters &param
+);
+
 #endif 
 

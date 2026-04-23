@@ -237,6 +237,7 @@ static void WriteParticlesSlab_unified(
                             out.i = i;
                             out.j = j;
                             out.k = k_value;
+                            out.reserved = 0;
                             out.displ[0] = pos[0];
                             out.displ[1] = pos[1];
                             out.displ[2] = pos[2];
@@ -672,6 +673,7 @@ void WriteParticlesSlab_range_from_zslab(
                             out.i        = i;
                             out.j        = j;
                             out.k        = k_global;
+                            out.reserved = 0;
                             out.displ[0] = pos[0];
                             out.displ[1] = pos[1];
                             out.displ[2] = pos[2];
@@ -868,8 +870,8 @@ double InitOutputBuffers(Parameters &param) {
         output_tmp = NULL;
     }
 
-    // Mode 3 writes density to per-file ic_*_dens; skip global density1920 file
-#if (PARTICLE_OUTPUT_MODE != 3)
+    // Mode 3 & 4 writes density to per-file ic_*_dens; skip global density1920 file
+#if (PARTICLE_OUTPUT_MODE != 3 and PARTICLE_OUTPUT_MODE != 4)
     if (param.qdensity) {
         fs::path path = param.output_dir / fmt::format(fmt::runtime(param.density_filename.string()), param.ppd);
 
@@ -1000,6 +1002,7 @@ void AppendSlabZSegment(
             out.i = (unsigned short)z;
             out.j = (unsigned short)y;
             out.k = (unsigned short)x_global;
+            out.reserved = 0;
             out.displ[0] = (float)pos0;
             out.displ[1] = (float)pos1;
             out.displ[2] = (float)pos2;
@@ -1091,6 +1094,7 @@ void AppendZSlabFull(
             out.i = (unsigned short)z;
             out.j = (unsigned short)y;
             out.k = (unsigned short)x_global;
+            out.reserved = 0;
             out.displ[0] = (float)pos0;
             out.displ[1] = (float)pos1;
             out.displ[2] = (float)pos2;
@@ -1106,6 +1110,98 @@ void AppendZSlabFull(
     fwrite(buf, sizeof(RVZelParticle), plane_particles, fp);
     if (dens_buf)
         fwrite(dens_buf, sizeof(float), plane_particles, fp_dens);
+
+    delete[] buf;
+    if (dens_buf) delete[] dens_buf;
+}
+
+// ====================================================================================
+// MODE 4: AppendZSlabSegment_M4 — write this rank's x-extent at one z to a z-slab file
+// ====================================================================================
+//
+// Dual of AppendSlabZSegment (Mode 3). Each z-slab file accumulates
+// [z0 segment][z1 segment]... for one CPD-aligned z-range, from one x-rank.
+// Indices stored: i=z (global), j=y (global), k=x (global).
+// Particle ordering within segment: y-outer, x-inner.
+
+void AppendZSlabSegment_M4(
+    FILE *fp,
+    FILE *fp_dens,
+    int z,
+    int k_start_global,
+    int k_extent,
+    fftw_complex_t *slab_data,
+    int N,
+    int narray,
+    Parameters &param
+) {
+    int64_t array_stride = (int64_t)k_extent * N;
+    fftw_complex_t *slab1 = &slab_data[0 * array_stride];
+    fftw_complex_t *slab2 = &slab_data[1 * array_stride];
+    fftw_complex_t *slab3 = (narray > 2) ? &slab_data[2 * array_stride] : NULL;
+    fftw_complex_t *slab4 = (narray > 3) ? &slab_data[3 * array_stride] : NULL;
+
+    double norm = 1.0;
+    double densitynorm = 1.0;
+    double vnorm = param.qPLT ? 1.0 : (sqrt(1.0 + 24.0 * param.f_cluster) - 1.0) * 0.25;
+    bool write_dens = (param.qdensity && fp_dens != NULL);
+
+    int64_t seg_particles = (int64_t)N * (int64_t)k_extent;
+
+    RVZelParticle *buf = new RVZelParticle[seg_particles];
+    float *dens_buf = write_dens ? new float[seg_particles] : NULL;
+
+    #pragma omp parallel for schedule(static)
+    for (int y = 0; y < N; y++) {
+        for (int x_global = k_start_global; x_global < k_start_global + k_extent; x_global++) {
+            int x_local = x_global - k_start_global;
+            int64_t idx = (int64_t)y * k_extent + x_local;
+
+            int64_t elem = (int64_t)x_local * N + y;
+
+            double s1_re = (double)slab1[elem][0];
+            double s1_im = (double)slab1[elem][1];
+            double s2_re = (double)slab2[elem][0];
+            double s2_im = (double)slab2[elem][1];
+
+            double pos0 = s2_im * norm;
+            double pos1 = s2_re * norm;
+            double pos2 = s1_im * norm;
+
+            double vel0, vel1, vel2;
+            if (param.qPLT) {
+                double s3_im = slab3 ? (double)slab3[elem][1] : 0.0;
+                double s4_re = slab4 ? (double)slab4[elem][0] : 0.0;
+                double s4_im = slab4 ? (double)slab4[elem][1] : 0.0;
+                vel0 = s4_im * vnorm;
+                vel1 = s4_re * vnorm;
+                vel2 = s3_im * vnorm;
+            } else {
+                vel0 = s2_im * vnorm;
+                vel1 = s2_re * vnorm;
+                vel2 = s1_im * vnorm;
+            }
+
+            RVZelParticle &out = buf[idx];
+            out.i = (unsigned short)z;
+            out.j = (unsigned short)y;
+            out.k = (unsigned short)x_global;
+            out.reserved = 0;
+            out.displ[0] = (float)pos0;
+            out.displ[1] = (float)pos1;
+            out.displ[2] = (float)pos2;
+            out.vel[0] = (float)vel0;
+            out.vel[1] = (float)vel1;
+            out.vel[2] = (float)vel2;
+
+            if (dens_buf)
+                dens_buf[idx] = (float)(s1_re * densitynorm);
+        }
+    }
+
+    fwrite(buf, sizeof(RVZelParticle), seg_particles, fp);
+    if (dens_buf)
+        fwrite(dens_buf, sizeof(float), seg_particles, fp_dens);
 
     delete[] buf;
     if (dens_buf) delete[] dens_buf;

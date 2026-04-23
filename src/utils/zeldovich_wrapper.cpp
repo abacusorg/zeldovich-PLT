@@ -22,6 +22,22 @@ ParametersHandle zeldovich_params_create(const char* param_file) {
     }
 }
 
+ParametersHandle zeldovich_params_create_from_buffer(
+    const char* header_bytes,
+    size_t header_len,
+    const char* source_name
+) {
+    if (header_bytes == NULL || header_len == 0 || source_name == NULL) {
+        return NULL;
+    }
+    try {
+        Parameters* params = new Parameters(header_bytes, header_len, fs::path(source_name));
+        return static_cast<ParametersHandle>(params);
+    } catch (...) {
+        return NULL;
+    }
+}
+
 void zeldovich_params_destroy(ParametersHandle params) {
     if (params) {
         delete static_cast<Parameters*>(params);
@@ -60,16 +76,10 @@ int zeldovich_params_get_cpd(ParametersHandle params) {
     return p->cpd;
 }
 
-int zeldovich_params_get_grid_x(ParametersHandle params) {
+int zeldovich_params_get_NumZRanks(ParametersHandle params) {
     if (!params) return 0;
     Parameters* p = static_cast<Parameters*>(params);
-    return p->grid_x;
-}
-
-int zeldovich_params_get_grid_z(ParametersHandle params) {
-    if (!params) return 0;
-    Parameters* p = static_cast<Parameters*>(params);
-    return p->grid_z;
+    return p->num_z_ranks;
 }
 
 int zeldovich_params_get_seed(ParametersHandle params) {
@@ -82,6 +92,13 @@ double zeldovich_params_get_Pk_powerlaw_index(ParametersHandle params) {
     if (!params) return 1000.0;
     Parameters* p = static_cast<Parameters*>(params);
     return p->Pk_powerlaw_index;
+}
+
+const char* zeldovich_params_get_Pk_filename(ParametersHandle params) {
+    if (!params) return NULL;
+    Parameters* p = static_cast<Parameters*>(params);
+    if (p->Pk_filename.empty()) return NULL;
+    return p->Pk_filename.c_str();
 }
 
 double zeldovich_params_get_f_cluster(ParametersHandle params) {

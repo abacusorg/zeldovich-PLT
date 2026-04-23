@@ -22,6 +22,15 @@ typedef void* ParametersHandle;
 // Returns NULL on error
 ParametersHandle zeldovich_params_create(const char* param_file);
 
+// Create Parameters object from in-memory header bytes
+// Buffer must include the ParseHeader expected trailing "\0\0".
+// Returns NULL on error.
+ParametersHandle zeldovich_params_create_from_buffer(
+    const char* header_bytes,
+    size_t header_len,
+    const char* source_name
+);
+
 // Destroy Parameters object
 void zeldovich_params_destroy(ParametersHandle params);
 
@@ -40,15 +49,18 @@ int64_t zeldovich_params_get_ppd(ParametersHandle params);
 // Get cpd (coarse particle decomposition; number of slabs for output alignment)
 int zeldovich_params_get_cpd(ParametersHandle params);
 
-// Get writer-specified MPI grid dimensions
-int zeldovich_params_get_grid_x(ParametersHandle params);
-int zeldovich_params_get_grid_z(ParametersHandle params);
+// Get user-specified number of ranks along z
+int zeldovich_params_get_NumZRanks(ParametersHandle params);
 
 // Get seed
 int zeldovich_params_get_seed(ParametersHandle params);
 
 // Get Pk_powerlaw_index
 double zeldovich_params_get_Pk_powerlaw_index(ParametersHandle params);
+
+// Get Pk_filename (tabular P(k) input). NULL if empty — use power law in that case.
+// Valid only while Parameters object exists.
+const char* zeldovich_params_get_Pk_filename(ParametersHandle params);
 
 // Get fundamental wavenumber (2pi/BoxSize)
 double zeldovich_params_get_fundamental(ParametersHandle params);

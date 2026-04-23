@@ -4,6 +4,7 @@
 #include <fstream>
 #include <sstream>
 #include <assert.h>
+#include <cstring>
 #include "ParseHeader.hh"
 
 #include <fmt/format.h>
@@ -15,13 +16,39 @@ HeaderStream::HeaderStream(const fs::path &fn) {
     buffer = (char *) NULL;
     bufferlength = 0;
     fp = (FILE *) NULL;
+    use_memory_buffer = false;
+    owns_buffer = true;
+}
+
+HeaderStream::HeaderStream(const char *in_buffer, size_t in_bufferlength, const fs::path &source_name) {
+    name = source_name;
+    buffer = (char *) NULL;
+    bufferlength = in_bufferlength;
+    fp = (FILE *) NULL;
+    use_memory_buffer = true;
+    owns_buffer = true;
+
+    if (in_bufferlength == 0 || in_buffer == NULL) {
+        fmt::print(std::cerr, "HeaderStream(memory): invalid buffer input\n");
+        exit(1);
+    }
+    if (in_bufferlength < 2) {
+        fmt::print(std::cerr, "HeaderStream(memory): buffer too short ({})\n", in_bufferlength);
+        exit(1);
+    }
+    buffer = new char[in_bufferlength];
+    memcpy(buffer, in_buffer, in_bufferlength);
 }
 
 HeaderStream::~HeaderStream(void) {
-    if(buffer != (char *) NULL) delete[] buffer;
+    if(owns_buffer && buffer != (char *) NULL) delete[] buffer;
 }
 
 void HeaderStream::OpenForRead(void) {
+    if(use_memory_buffer) {
+        fmt::print(std::cerr, "HeaderStream::OpenForRead: cannot open memory-backed stream as file\n");
+        exit(1);
+    }
     if(name.empty()) {
         fmt::print(std::cerr, "HeaderStream::OpenForRead: filename is empty\n");
         exit(1);
@@ -38,6 +65,9 @@ void HeaderStream::OpenForRead(void) {
 }
 
 void HeaderStream::Close(void) {
+    if(use_memory_buffer) {
+        return;
+    }
     if(fp == (FILE *)NULL) {
         fmt::print(std::cerr, "HeaderStream::Close: file is already closed\n");
         exit(1);
@@ -49,6 +79,9 @@ void HeaderStream::Close(void) {
 // returns length of header, including the ^B^B at end, and leave the
 //     file open, at the end of the header.
 void HeaderStream::SkipHeader(void) {
+    if(use_memory_buffer) {
+        return;
+    }
     OpenForRead();
     bufferlength = HeaderStream::SkipHeaderFromFP(fp);
     return;
@@ -79,11 +112,17 @@ size_t HeaderStream::SkipHeaderFromFP(FILE *fp) {
 
 // get length of the header, including the ^B^B at the end
 void HeaderStream::GetHeaderLength(void) {
+    if(use_memory_buffer) {
+        return;
+    }
     SkipHeader();
     Close();
 }
 
 void HeaderStream::ReadHeader(void) {
+    if(use_memory_buffer) {
+        return;
+    }
     GetHeaderLength();  // this guarantees there is a valid header
     buffer = new char[bufferlength];
     OpenForRead();

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <filesystem>
 
 #include "ParseHeader.hh"
@@ -16,8 +17,8 @@ public:
     // are different from the P(k) input file units
     int64_t ppd;  // The size of the simulation grid to generate
     int cpd;
-    int grid_x;  // Writer-specified MPI grid in x
-    int grid_z;  // Writer-specified MPI grid in z
+    int grid_x;       // Computed MPI grid in x
+    int num_z_ranks;  // User-specified number of ranks along z
     long long int np;
     int numblock;  // The number of blocks to divide this into.
     // This must be an even divisor!
@@ -82,7 +83,12 @@ public:
     // Write a suitable header into the output file
     //
     Parameters(const fs::path &inputfile);
+    Parameters(const char *header_bytes, size_t header_len, const fs::path &source_name);
     ~Parameters();
 
     void register_vars(void);
+
+private:
+    void set_defaults(void);
+    void initialize_from_stream(HeaderStream *stream);
 };

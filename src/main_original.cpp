@@ -38,6 +38,7 @@
 #include <stdint.h>
 #include <assert.h>
 #include <limits.h>  // For INT_MAX
+#include <vector>
 #include <mpi.h>
 #include <omp.h>  // For hybrid MPI+OpenMP within each rank
 #include <fftw3.h>
@@ -46,6 +47,7 @@
 
 // Include PCG RNG and STimer
 #include "pcg-rng/pcg_random.hpp"
+#include <ParseHeader.hh>
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -470,6 +472,51 @@ void x_streaming_unpack(
 // MAIN FUNCTION
 // ====================================================================================
 
+static int broadcast_parameter_header_bytes(
+    const char *param_file,
+    int rank,
+    MPI_Comm comm,
+    std::vector<char> &header_bytes
+) {
+    uint64_t header_len = 0;
+    if (rank == 0) {
+        HeaderStream hs{fs::path(param_file)};
+        hs.ReadHeader();
+        if (hs.buffer == NULL || hs.bufferlength < 2) {
+            fprintf(stderr, "ERROR: Invalid parameter header read from %s\n", param_file);
+            return 1;
+        }
+        if (hs.bufferlength > static_cast<size_t>(INT_MAX)) {
+            fprintf(stderr, "ERROR: Parameter header too large for MPI_Bcast count: %zu\n", hs.bufferlength);
+            return 1;
+        }
+        header_bytes.assign(hs.buffer, hs.buffer + hs.bufferlength);
+        header_len = static_cast<uint64_t>(hs.bufferlength);
+    }
+
+    MPI_Bcast(&header_len, 1, MPI_UINT64_T, 0, comm);
+    if (header_len < 2) {
+        if (rank == 0) {
+            fprintf(stderr, "ERROR: Broadcast parameter header length is invalid: %llu\n",
+                    static_cast<unsigned long long>(header_len));
+        }
+        return 1;
+    }
+    if (header_len > static_cast<uint64_t>(INT_MAX)) {
+        if (rank == 0) {
+            fprintf(stderr, "ERROR: Broadcast parameter header exceeds MPI_Bcast int count: %llu\n",
+                    static_cast<unsigned long long>(header_len));
+        }
+        return 1;
+    }
+
+    if (rank != 0) {
+        header_bytes.resize(static_cast<size_t>(header_len));
+    }
+    MPI_Bcast(header_bytes.data(), static_cast<int>(header_len), MPI_BYTE, 0, comm);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     // ========================================================================
@@ -740,8 +787,17 @@ int main(int argc, char **argv)
         if (rank == 0) {
             printf("[INIT] Loading zeldovich-PLT parameters from: %s\n", param_file);
         }
-        
-        params = zeldovich_params_create(param_file);
+
+        std::vector<char> param_header_bytes;
+        if (broadcast_parameter_header_bytes(param_file, rank, MPI_COMM_WORLD, param_header_bytes) != 0) {
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
+
+        params = zeldovich_params_create_from_buffer(
+            param_header_bytes.data(),
+            param_header_bytes.size(),
+            param_file
+        );
         if (!params) {
             if (rank == 0) {
                 fprintf(stderr, "ERROR: Failed to load parameter file: %s\n", param_file);

@@ -17,6 +17,7 @@ namespace fs = std::filesystem;
 class HeaderStream {
 public:
     HeaderStream(const fs::path &fn);
+    HeaderStream(const char *in_buffer, size_t in_bufferlength, const fs::path &source_name);
     virtual ~HeaderStream(void);
 
     void OpenForRead(void);
@@ -31,6 +32,8 @@ public:
     char *buffer;
     size_t bufferlength;
     FILE *fp;
+    bool use_memory_buffer;
+    bool owns_buffer;
 
 private:
     void GetHeaderLength(void);

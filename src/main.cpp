@@ -8,7 +8,7 @@
  *    - Distribute pairs across ranks; build my_pair_list for this rank
  *
  * 3. PARAMETER AND SPECTRUM LOADING
- *    - Load zeldovich-PLT params; create power spectrum (spline, power law)
+ *    - Load zeldovich-PLT params; create power spectrum (ZD_Pk_filename -> file spline, else ZD_Pk_powerlaw_index -> power law)
  *    - Load PLT eigenmodes if qPLT; set narray (1/2/4 by qdensity/qPLT)
  *
  * 4. FFT SETUP
@@ -33,11 +33,12 @@
  *
  * 8. Z-SLAB STREAMING (for each Z owned by this rank)
  *    - Allocate local_z_slab (one Z-slab: [Array][X][Y])
- *    - For each z: z_streaming_unpack(recv_buffer -> local_z_slab, 1D FFT in Y)
+ *    - For each z: z_streaming_unpack(recv_buffer -> local_z_slab, staged 1D FFT in Y)
  *    - Write output: PARTICLE_OUTPUT_MODE 0 -> WriteParticlesSlab_range
  *                    PARTICLE_OUTPUT_MODE 1 -> .bin files
  *                    PARTICLE_OUTPUT_MODE 2 -> .bin then read-back -> WriteParticlesSlab_range
  *                    PARTICLE_OUTPUT_MODE 3 -> CPD-slab-ordered streaming append (one file per slab, optionally split by z-rank)
+ *                    PARTICLE_OUTPUT_MODE 4 -> z-slab streaming append (one file per z-slab, in x-rank subdirs)
  *
  * 9. CLEANUP
  *    - Free plans, recv_buffer, local buffers, params, ps, PLT eigenmodes
@@ -59,10 +60,14 @@
 #include <errno.h>
 #include <execinfo.h>  
 #include <unistd.h>    // For getpid
+#ifdef __linux__
+#include <sched.h>     // sched_getcpu() — OpenMP thread CPU placement diagnostics
+#endif
 
 // Include PCG RNG and STimer (vendored from zeldovich-PLT)
 #include "pcg-rng/pcg_random.hpp"
 #include <STimer.h>
+#include <ParseHeader.hh>
 
 // --- CONFIGURATION AND TYPES (config.h, precision.h, types.h) ---
 #include "config.h"
@@ -96,27 +101,113 @@
 #include "mpi_topology.h"
 MPI_Comm comm_2d;
 
+/** Rank 0: print MPI thread level from MPI_Init_thread (required vs provided). */
+static void print_mpi_init_thread_levels(int required, int provided, int world_rank)
+{
+    if (world_rank != 0) return;
+    printf("[MPI] MPI_Init_thread: required=%d provided=%d\n", required, provided);
+    fflush(stdout);
+}
+
+static int broadcast_parameter_header_bytes(
+    const char *param_file,
+    int world_rank,
+    MPI_Comm comm,
+    std::vector<char> &header_bytes
+) {
+    uint64_t header_len = 0;
+    if (world_rank == 0) {
+        HeaderStream hs{fs::path(param_file)};
+        hs.ReadHeader();
+        if (hs.buffer == NULL || hs.bufferlength < 2) {
+            fprintf(stderr, "ERROR: Invalid parameter header read from %s\n", param_file);
+            return 1;
+        }
+        if (hs.bufferlength > static_cast<size_t>(INT_MAX)) {
+            fprintf(stderr, "ERROR: Parameter header too large for MPI_Bcast count: %zu\n", hs.bufferlength);
+            return 1;
+        }
+        header_bytes.assign(hs.buffer, hs.buffer + hs.bufferlength);
+        header_len = static_cast<uint64_t>(hs.bufferlength);
+    }
+
+    MPI_Bcast(&header_len, 1, MPI_UINT64_T, 0, comm);
+    if (header_len < 2) {
+        if (world_rank == 0) {
+            fprintf(stderr, "ERROR: Broadcast parameter header length is invalid: %llu\n",
+                    static_cast<unsigned long long>(header_len));
+        }
+        return 1;
+    }
+    if (header_len > static_cast<uint64_t>(INT_MAX)) {
+        if (world_rank == 0) {
+            fprintf(stderr, "ERROR: Broadcast parameter header exceeds MPI_Bcast int count: %llu\n",
+                    static_cast<unsigned long long>(header_len));
+        }
+        return 1;
+    }
+
+    if (world_rank != 0) {
+        header_bytes.resize(static_cast<size_t>(header_len));
+    }
+    MPI_Bcast(header_bytes.data(), static_cast<int>(header_len), MPI_BYTE, 0, comm);
+    return 0;
+}
+
+/**
+ * If HERMITIAN_PRINT_AFFINITY is set (non-empty, not "0"), print one line per OpenMP thread
+ * with sched_getcpu(). Linux only. Can produce many lines (ranks x threads); use with small jobs
+ * or redirect stdout. Compare with mpiexec --display-bindings (Open MPI).
+ */
+static void print_omp_thread_cpus_if_requested(int world_rank)
+{
+    const char *env = getenv("HERMITIAN_PRINT_AFFINITY");
+    if (env == NULL || env[0] == '\0') return;
+    if (env[0] == '0' && env[1] == '\0') return;
+#ifdef __linux__
+    MPI_Barrier(MPI_COMM_WORLD);
+    fflush(stdout);
+    #pragma omp parallel
+    {
+        int tid = omp_get_thread_num();
+        int cpu = sched_getcpu();
+        printf("[AFFINITY] rank %d thread %d cpu %d\n", world_rank, tid, cpu);
+        fflush(stdout);
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
+#else
+    if (world_rank == 0) {
+        fprintf(stderr,
+                "[AFFINITY] HERMITIAN_PRINT_AFFINITY is set but sched_getcpu() is only used on Linux; "
+                "skipped.\n");
+        fflush(stderr);
+    }
+#endif
+}
+
 // --- MAIN ---
 int main(int argc, char **argv)
 {
     int provided;
-    int required = MPI_THREAD_FUNNELED;
+    int required = MPI_THREAD_SINGLE; // MPI_THREAD_FUNNELED;
     int ret = MPI_Init_thread(NULL, NULL, required, &provided);
     if (ret != MPI_SUCCESS) {
         fprintf(stderr, "MPI_Init_thread failed with error code %d\n", ret);
         return 1;
     }
-    if (provided < required) {
-        fprintf(stderr, "FATAL: MPI provides thread level %d, need %d (MPI_THREAD_FUNNELED). Hybrid MPI+OMP will scale badly.\n", provided, required);
-        MPI_Finalize();
-        return 1;
-    }
+    // if (provided < required) {
+    //     fprintf(stderr, "FATAL: MPI provides thread level %d, need %d (MPI_THREAD_FUNNELED). Hybrid MPI+OMP will scale badly.\n", provided, required);
+    //     MPI_Finalize();
+    //     return 1;
+    // }
 
-    // Future: Use
     int num_ranks;
     MPI_Comm_size(MPI_COMM_WORLD, &num_ranks);
     int world_rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+
+    print_mpi_init_thread_levels(required, provided, world_rank);
+    print_omp_thread_cpus_if_requested(world_rank);
 
     // ========================================================================
     // Stage 1: Parse arguments (before topology so we can load params for CPD/PPD)
@@ -159,7 +250,16 @@ int main(int argc, char **argv)
     // Load param file early for CPD/PPD (used for CPD-aligned MPI grid)
     // ========================================================================
     ParametersHandle params = NULL;
-    params = zeldovich_params_create(param_file);
+    std::vector<char> param_header_bytes;
+    if (broadcast_parameter_header_bytes(param_file, world_rank, MPI_COMM_WORLD, param_header_bytes) != 0) {
+        MPI_Abort(MPI_COMM_WORLD, 1);
+    }
+
+    params = zeldovich_params_create_from_buffer(
+        param_header_bytes.data(),
+        param_header_bytes.size(),
+        param_file
+    );
     if (!params) {
         if (world_rank == 0) {
             fprintf(stderr, "Failed to load param file: %s\n", param_file);
@@ -175,20 +275,16 @@ int main(int argc, char **argv)
     }
 
     // ========================================================================
-    // MPI Cartesian Topology Setup (writer-specified grid from param file)
+    // MPI Cartesian Topology Setup (grid_z from param file, grid_x from MPI size)
     // ========================================================================
-    // Future: Use ZD_NumZRanks from param file and num_ranks (from MPI_COMM_WORLD, which is from MPI runtime flag -n) to compute grid_x.
-    // e.g if ZD_NumZRanks = 6 and num_ranks = 6, then grid_x = 1 and grid_z = 6 (1D in z).
-    // if ZD_NumZRanks = 3 and num_ranks = 6, then grid_x = 2 and grid_z = 3 (2D in x and z).
     int grid_x, grid_z;
-    grid_x = zeldovich_params_get_grid_x(params);
-    grid_z = zeldovich_params_get_grid_z(params);
+    grid_z = zeldovich_params_get_NumZRanks(params);
+    grid_x = num_ranks / grid_z;
 
-    if (grid_x * grid_z != num_ranks) {
+    if (num_ranks % grid_z != 0) {
         if (world_rank == 0) {
-            fprintf(stderr, "Error: parameter file grid_x=%d and grid_z=%d do not match num_ranks=%d.\n",
-                    grid_x, grid_z, num_ranks);
-            fprintf(stderr, "       Expected grid_x * grid_z == num_ranks.\n");
+            fprintf(stderr, "Error: num_ranks=%d is not evenly divisible by ZD_NumZRanks=%d.\n",
+                    num_ranks, grid_z);
         }
         MPI_Abort(MPI_COMM_WORLD, 1);
     }
@@ -341,19 +437,31 @@ int main(int argc, char **argv)
             MPI_Abort(comm_2d, 1);
         }
         
-        double powerlaw_index = zeldovich_params_get_Pk_powerlaw_index(params);
-        if (powerlaw_index == 1000.0) {
-            if (rank == 0) {
-                fprintf(stderr, "ERROR: ZD_Pk_powerlaw_index not specified in parameter file\n");
+        const char* pk_file = zeldovich_params_get_Pk_filename(params);
+        if (pk_file != NULL && pk_file[0] != '\0') {
+            if (zeldovich_ps_init_file(ps, pk_file, params) != 0) {
+                if (rank == 0) {
+                    fprintf(stderr, "ERROR: Failed to initialize power spectrum from file: %s\n", pk_file);
+                }
+                MPI_Abort(comm_2d, 1);
             }
-            MPI_Abort(comm_2d, 1);
-        }
-        
-        if (zeldovich_ps_init_powerlaw(ps, powerlaw_index, params) != 0) {
             if (rank == 0) {
-                fprintf(stderr, "ERROR: Failed to initialize power spectrum (power law index: %.2f)\n", powerlaw_index);
+                printf("[INIT] Power spectrum loaded from file: %s\n", pk_file);
             }
-            MPI_Abort(comm_2d, 1);
+        } else {
+            double powerlaw_index = zeldovich_params_get_Pk_powerlaw_index(params);
+            if (powerlaw_index == 1000.0) { // ZD_Pk_powerlaw_index == 1000 means “not set”
+                if (rank == 0) {
+                    fprintf(stderr, "ERROR: Set ZD_Pk_filename or ZD_Pk_powerlaw_index (mutually exclusive)\n");
+                }
+                MPI_Abort(comm_2d, 1);
+            }
+            if (zeldovich_ps_init_powerlaw(ps, powerlaw_index, params) != 0) {
+                if (rank == 0) {
+                    fprintf(stderr, "ERROR: Failed to initialize power spectrum (power law index: %.2f)\n", powerlaw_index);
+                }
+                MPI_Abort(comm_2d, 1);
+            }
         }
         
         // Load PLT eigenmodes from file
@@ -808,6 +916,7 @@ int main(int argc, char **argv)
         // ===== BATCH STEP 7: Update write cursors =====
         // After MPI_Alltoallv_c completes, the cursor is advanced by recvcounts_batch[src]
         // The next batch then calculates a displacement that points after the current batch's data
+        // (loop over batches of y slices) Each MPI_Alltoallv_c only adds the next chunk of data into the right place in the same pre-sized recv_buffer. The cursors (src_write_cursor) make batch 1’s data sit after batch 0’s data for each source, and so on, until the buffer matches the final “source-grouped” layout described in the file header.
 
         for (int src = 0; src < num_ranks; src++) {
             src_write_cursor[src] += recvcounts_batch[src];
@@ -901,13 +1010,14 @@ int main(int argc, char **argv)
             fprintf(stderr, "Rank %d: posix_memalign failed for local_z_slab (one Z-slab)\n", rank);
             MPI_Abort(comm_2d, 1);
         }
+
     } else {
         // Idle ranks: local_z_slab stays NULL
         local_z_slab = NULL;
     }
     
-    // Create directory for this rank (before Z-loop) -- only needed for Mode 1/2 (.bin files)
-#if (PARTICLE_OUTPUT_MODE != 3)
+    // Create directory for this rank (before Z-loop) -- only needed for Mode 1 or 2 (.bin files)
+#if (PARTICLE_OUTPUT_MODE != 3 && PARTICLE_OUTPUT_MODE != 4)
     char dirname[64];
     snprintf(dirname, sizeof(dirname), "rank_%d", rank);
     int mkdir_result = mkdir(dirname, 0755);
@@ -928,6 +1038,11 @@ int main(int argc, char **argv)
     int zgrp_start = 0, zgrp_end = 0;
     std::vector<FILE*> zgrp_fp;
     std::vector<FILE*> zgrp_dens_fp;
+
+    // MODE 4: file vectors for z-slab format (paths use z%%03d / ic_*_z%%03d; rank index is still rank_x)
+    int slab_z_start = 0, slab_z_end = 0;
+    std::vector<FILE*> zslab_fp;
+    std::vector<FILE*> zslab_dens_fp;
     
     if (PARTICLE_OUTPUT_MODE == 3 && params != NULL && !is_idle_rank) {
         Parameters *p = static_cast<Parameters*>(params);
@@ -1063,8 +1178,104 @@ int main(int argc, char **argv)
             }
         }
     }
+
+    // MODE 4: z(k)-slab files under ic/z%03d/ (dual of Mode 3 grid_x>1); dirname z_ matches downstream readers
+    if (PARTICLE_OUTPUT_MODE == 4 && params != NULL && !is_idle_rank) {
+        Parameters *p = static_cast<Parameters*>(params);
+
+        char ic_dir[PATH_MAX];
+        snprintf(ic_dir, sizeof(ic_dir), "%s/ic", p->output_dir.c_str());
+        int mkdir_ic = mkdir(ic_dir, 0755);
+        if (mkdir_ic != 0 && errno != EEXIST) {
+            fprintf(stderr, "Rank %d: ERROR creating directory %s (errno=%d)\n", rank, ic_dir, errno);
+            MPI_Abort(comm_2d, 1);
+        }
+
+        // ic/z%03d/ per rank_x (Abacus "x" split); z_ prefix is on-disk convention only
+        char ic_z_subdir[PATH_MAX];
+        snprintf(ic_z_subdir, sizeof(ic_z_subdir), "%s/ic/z%03d", p->output_dir.c_str(), rank_x);
+        int mkdir_ic_z = mkdir(ic_z_subdir, 0755);
+        if (mkdir_ic_z != 0 && errno != EEXIST) {
+            fprintf(stderr, "Rank %d: ERROR creating directory %s (errno=%d)\n", rank, ic_z_subdir, errno);
+            MPI_Abort(comm_2d, 1);
+        }
+
+        if (p->qdensity) {
+            char dens_dir[PATH_MAX];
+            snprintf(dens_dir, sizeof(dens_dir), "%s/dens", p->output_dir.c_str());
+            int mkdir_dens = mkdir(dens_dir, 0755);
+            if (mkdir_dens != 0 && errno != EEXIST) {
+                fprintf(stderr, "Rank %d: ERROR creating directory %s (errno=%d)\n", rank, dens_dir, errno);
+                MPI_Abort(comm_2d, 1);
+            }
+            char dens_z_subdir[PATH_MAX];
+            snprintf(dens_z_subdir, sizeof(dens_z_subdir), "%s/dens/z%03d", p->output_dir.c_str(), rank_x);
+            int mkdir_dens_z = mkdir(dens_z_subdir, 0755);
+            if (mkdir_dens_z != 0 && errno != EEXIST) {
+                fprintf(stderr, "Rank %d: ERROR creating directory %s (errno=%d)\n", rank, dens_z_subdir, errno);
+                MPI_Abort(comm_2d, 1);
+            }
+        }
+
+        // Z(k)-slab ownership: partition cpd z-slabs among z(k)-ranks
+        slab_z_start = (rank_z * cpd) / grid_z;
+        slab_z_end   = ((rank_z + 1) * cpd) / grid_z;
+
+        zslab_fp.resize(slab_z_end - slab_z_start, NULL);
+        zslab_dens_fp.resize(slab_z_end - slab_z_start, NULL);
+
+        // Zeldovich-MPI "z" = Abacus "x" T^T
+        for (int s = slab_z_start; s < slab_z_end; s++) {
+            char fp_path[PATH_MAX];
+            snprintf(fp_path, sizeof(fp_path), "%s/ic/z%03d/ic_%04d_z%03d",
+                     p->output_dir.c_str(), rank_x, s, rank_x);
+            zslab_fp[s - slab_z_start] = fopen(fp_path, "wb");
+            if (!zslab_fp[s - slab_z_start]) {
+                fprintf(stderr, "Rank %d: ERROR opening %s for writing (errno=%d)\n",
+                        rank, fp_path, errno);
+            }
+            if (p->qdensity && zslab_fp[s - slab_z_start] != NULL) {
+                char fd_path[PATH_MAX];
+                snprintf(fd_path, sizeof(fd_path), "%s/dens/z%03d/dens_%04d",
+                         p->output_dir.c_str(), rank_x, s);
+                zslab_dens_fp[s - slab_z_start] = fopen(fd_path, "wb");
+                if (!zslab_dens_fp[s - slab_z_start]) {
+                    fprintf(stderr, "Rank %d: ERROR opening %s for density (errno=%d)\n",
+                            rank, fd_path, errno);
+                }
+            }
+        }
+
+        if (rank == 0) {
+            printf("[MODE 4] z-slab files: cpd=%d, slabs_per_rank=%d, ic/z%%03d/ic_%%04d_z%%03d (and dens/z%%03d/dens_%%04d if qdensity)\n",
+                   cpd, slab_z_end - slab_z_start);
+        }
+    }
+
+    double acc_unpack = 0.0;
+    double acc_fft = 0.0;
+    double acc_io = 0.0;
     
     if (!is_idle_rank && my_pencils > 0) {
+        // allocate array of pointers, one per thread
+        // pointers to aligned buffers for 1D Y FFT
+        const int num_threads = omp_get_max_threads();
+        fftw_complex_t **thread_1d_bufs =
+            (fftw_complex_t**)calloc((size_t)num_threads, sizeof(fftw_complex_t*));
+        if (thread_1d_bufs == NULL) {
+            fprintf(stderr, "Rank %d: calloc failed for thread_1d_bufs\n", rank);
+            MPI_Abort(comm_2d, 1);
+        }
+        // each thread gets aligned buffer of size PPD for 1D FFT
+        for (int t = 0; t < num_threads; t++) {
+            if (posix_memalign((void**)&thread_1d_bufs[t], ALIGN_BYTES,
+                               sizeof(fftw_complex_t) * (size_t)N) != 0) {
+                fprintf(stderr, "Rank %d: posix_memalign failed for thread_1d_bufs[%d]\n", rank, t);
+                MPI_Abort(comm_2d, 1);
+            }
+        }
+        const int num_thread_bufs = num_threads;
+
         // Use appropriate bounds for Z-loop (padded if enabled, core otherwise)
 #if USE_X_PADDING
         int x_count = my_extended_bounds.padded.x_end - my_extended_bounds.padded.x_start;
@@ -1101,7 +1312,11 @@ int main(int argc, char **argv)
                 src_batch_slice_counts,          // [src][batch] --> slice count
                 global_max_batches,              // Total number of batches
                 local_z_slab,                    // Destination buffer
-                plan_1d_y                        // FFT plan
+                thread_1d_bufs,
+                num_thread_bufs,
+                &acc_unpack,
+                &acc_fft,
+                plan_1d_y                        // FFT plan (1 FFTW thread; staged)
             );
             
             // ========== DEBUG: Check imaginary parts BEFORE final verification ==========
@@ -1157,6 +1372,8 @@ int main(int argc, char **argv)
             // Skip all output writes - Stage 3 still does unpack+FFT, but no I/O
             (void)0;
 #else
+            {
+            double t_io0 = omp_get_wtime();
             switch (PARTICLE_OUTPUT_MODE) {
                 case 0: {
                     // =======================================================================================
@@ -1349,9 +1566,36 @@ int main(int argc, char **argv)
                     }
                     break;
                 }
+
+                case 4: {
+                    // ===========================================================================
+                    // MODE 4: z-slab format — one segment per z to the owning z-slab file
+                    // ===========================================================================
+                    int s = z * cpd / N;
+                    if (s >= slab_z_start && s < slab_z_end) {
+                        FILE *fp = zslab_fp[s - slab_z_start];
+                        FILE *fp_dens = (s - slab_z_start < (int)zslab_dens_fp.size())
+                                        ? zslab_dens_fp[s - slab_z_start] : NULL;
+                        if (fp != NULL) {
+                            AppendZSlabSegment_M4(
+                                fp, fp_dens, z,
+                                my_extended_bounds.core.x_start, x_count,
+                                local_z_slab, N, narray,
+                                *static_cast<Parameters*>(params)
+                            );
+                        }
+                    }
+                    int ox_total = my_extended_bounds.core.x_end - my_extended_bounds.core.x_start;
+                    total_bytes_written += (size_t)ox_total * N * sizeof(RVZelParticle);
+                    if (static_cast<Parameters*>(params)->qdensity)
+                        total_bytes_written += (size_t)ox_total * N * sizeof(float);
+                    break;
+                }
                 
                 default:
                     break;
+            }
+            acc_io += omp_get_wtime() - t_io0;
             }
 #endif // !SKIP_FILE_WRITE
 
@@ -1370,6 +1614,14 @@ int main(int argc, char **argv)
                 }
             }
         }
+
+        for (int t = 0; t < num_threads; t++) {
+            if (thread_1d_bufs[t] != NULL) {
+                free(thread_1d_bufs[t]);
+                thread_1d_bufs[t] = NULL;
+            }
+        }
+        free(thread_1d_bufs);
     }
     // Idle ranks: files_written = 0, total_bytes_written = 0 (already initialized)
     
@@ -1394,8 +1646,25 @@ int main(int argc, char **argv)
         }
         MPI_Barrier(comm_2d);
     }
+
+    // MODE 4: Close files and set file count
+    if (PARTICLE_OUTPUT_MODE == 4 && params != NULL) {
+        for (size_t i = 0; i < zslab_fp.size(); i++) {
+            if (zslab_fp[i] != NULL) { fclose(zslab_fp[i]); zslab_fp[i] = NULL; }
+            if (i < zslab_dens_fp.size() && zslab_dens_fp[i] != NULL) {
+                fclose(zslab_dens_fp[i]); zslab_dens_fp[i] = NULL;
+            }
+        }
+        files_written = slab_z_end - slab_z_start;
+        MPI_Barrier(comm_2d);
+    }
     
     t_streaming.Stop();
+
+    double acc_unpack_max = 0.0, acc_fft_max = 0.0, acc_io_max = 0.0;
+    MPI_Reduce(&acc_unpack, &acc_unpack_max, 1, MPI_DOUBLE, MPI_MAX, 0, comm_2d);
+    MPI_Reduce(&acc_fft, &acc_fft_max, 1, MPI_DOUBLE, MPI_MAX, 0, comm_2d);
+    MPI_Reduce(&acc_io, &acc_io_max, 1, MPI_DOUBLE, MPI_MAX, 0, comm_2d);
     
     int total_files_written;
     size_t total_bytes_all_ranks;
@@ -1406,6 +1675,9 @@ int main(int argc, char **argv)
     if (rank == 0) {
         printf("[Stage 3] Streaming complete. Time: %.6f s\n", t_streaming.Elapsed());
         printf("          (Includes unpacking, FFT, and I/O for all Z-slabs)\n");
+        printf("          Unpack (recv -> slab, max rank): %.6f s\n", acc_unpack_max);
+        printf("          1D Y FFT (staged, max rank):    %.6f s\n", acc_fft_max);
+        printf("          Write / I/O (switch, max rank):  %.6f s\n", acc_io_max);
         printf("          Total files written: %d (across all ranks)\n", total_files_written);
         printf("          Total data written: %.3f GB\n", 
                total_bytes_all_ranks / (1024.0 * 1024.0 * 1024.0));
@@ -1443,6 +1715,8 @@ int main(int argc, char **argv)
         printf("Stage 2 (Metadata exchange):            %.6f s\n", 0.0);  // Minimal time
         printf("Stage 3 (Communication: Alltoallv):    %.6f s\n", t_comm.Elapsed());
         printf("Stage 4 (Streaming: Unpack+FFT+Write):  %.6f s\n", t_streaming.Elapsed());
+        printf("  (max rank) Unpack / 1D-Y-FFT / I/O:   %.6f / %.6f / %.6f s\n",
+               acc_unpack_max, acc_fft_max, acc_io_max);
         printf("------------------------------------------------------------------------------------\n");
         printf("Total 3D FFT time (Gen + Comm + FFT):   %.6f s\n", 
                t_gen.Elapsed() + t_comm.Elapsed() + t_streaming.Elapsed());
@@ -1465,7 +1739,6 @@ int main(int argc, char **argv)
         free(local_z_slab);
         local_z_slab = NULL;
     }
-    
     // FREE: Y-mapping arrays (used for unpacking)
     if (y_owner_src != NULL) {
         free(y_owner_src);

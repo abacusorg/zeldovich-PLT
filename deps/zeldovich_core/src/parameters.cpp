@@ -9,13 +9,20 @@
 
 // Write a suitable header into the output file
 Parameters::Parameters(const fs::path &inputfile) {
-    // Set default values first
+    initialize_from_stream(new HeaderStream(inputfile));
+}
+
+Parameters::Parameters(const char *header_bytes, size_t header_len, const fs::path &source_name) {
+    initialize_from_stream(new HeaderStream(header_bytes, header_len, source_name));
+}
+
+void Parameters::set_defaults(void) {
     ppd             = 0;       // Illegal
     numblock        = 2;       // Ok, but you might not want this!
     boxsize         = 0;       // Illegal
     Pk_scale        = 1;       // Legal default
-    grid_x          = 0;       // Must be specified for MPI-Zeldovich writer
-    grid_z          = 0;       // Must be specified for MPI-Zeldovich writer
+    grid_x          = 0;       // Computed at runtime from MPI size and num_z_ranks
+    num_z_ranks     = 0;       // Must be specified for MPI-Zeldovich writer
     qdensity        = 0;       // Legal default
     qascii          = 0;       // Legal default
     qoneslab        = -1;      // Legal default
@@ -44,10 +51,17 @@ Parameters::Parameters(const fs::path &inputfile) {
     CornerModes = 0;     // Legal default (no corner modes)
     n_s         = 1;     // Legal default (only used for f_NL)
     Omega_M     = 1.0;   // Legal default (only used for f_NL)
+}
 
-    // Read the paramater file values
+void Parameters::initialize_from_stream(HeaderStream *stream) {
+    assert(stream != nullptr);
+
+    // Set default values first
+    set_defaults();
+
+    // Read the parameter file values
     register_vars();
-    inputstream = new HeaderStream(inputfile);
+    inputstream = stream;
     ReadHeader(*inputstream);
 
     // Check the validity and compute derived quantities
@@ -66,8 +80,7 @@ void Parameters::register_vars(void) {
     installscalar("NP", np, MUST_DEFINE);
     installscalar("ZD_NumBlock", numblock, MUST_DEFINE);
     installscalar("CPD", cpd, MUST_DEFINE);
-    installscalar("ZD_grid_x", grid_x, MUST_DEFINE);
-    installscalar("ZD_grid_z", grid_z, MUST_DEFINE);
+    installscalar("ZD_NumZRanks", num_z_ranks, MUST_DEFINE);
     installscalar("ZD_qdensity", qdensity, DONT_CARE);
     installscalar("ZD_qoneslab", qoneslab, DONT_CARE);
     installscalar("ZD_Seed", seed, MUST_DEFINE);

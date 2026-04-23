@@ -30,6 +30,7 @@ public:
 class RVZelParticle {
 public:
     unsigned short i, j, k;
+    unsigned short reserved; // explicit padding word to be 0
     float displ[3];
     float vel[3];
 };

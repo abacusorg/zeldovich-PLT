@@ -8,8 +8,10 @@
 #include "../config.h"  // For DEBUG_PRINTS, SKIP_VERIFICATION
 #include "../precision.h"  // For real_t, fabs_t, fmax_t
 #include <stdio.h>
+#include <string.h>
 #include <math.h>    // For isinf, isnan
 #include <mpi.h>
+#include <omp.h>
 
 // Optional safety checks for streaming offsets (lightweight).
 // Set to 1 temporarily when debugging packing/unpacking issues.
@@ -20,10 +22,10 @@
 // ====================================================================================
 // Z-slab stream unpacking for Abcus-compatible output (?)
 // Unpacks one Z-slab (cuz of mem) from the MPI receive buffer
-// Applies 1D FFT along the Y-direction
-// ** To-do: Put into format for zeldovich-PLT writing interface 
-
-// ** NOTE: Batch-aware unpacking: The receive buffer is organized by batches, 
+// Applies 1D FFT along the Y-direction using staged ALIGN_BYTES-aligned buffers per OMP
+// thread (plan_1d_y built with FFTW_PLAN_WITH_NTHREADS(1); OpenMP parallelizes pencils).
+//
+// ** NOTE: Batch-aware unpacking: The receive buffer is organized by batches,
 // so the function computes cumulative batch offsets to find the correct data location
 // ====================================================================================
 
@@ -42,6 +44,10 @@ void z_streaming_unpack(
     int **src_batch_slice_counts,          // [src][batch] -> slice count
     int global_max_batches,                // Total number of batches
     fftw_complex_t *local_z_slab,          // Destination buffer (one Z-slab)
+    fftw_complex_t **thread_1d_bufs,       // Per-thread staging rows (num_thread_bufs)
+    int num_thread_bufs,
+    double *acc_unpack,
+    double *acc_fft,
     fftw_plan_t plan_1d_y)                 // FFT plan for Y-direction
 {
     (void)rank;                // Unused in normal builds (used in debug checks)
@@ -59,6 +65,11 @@ void z_streaming_unpack(
                 rank, z_global, my_bounds.z_start, my_bounds.z_end);
         MPI_Abort(comm_2d, 1);
     }
+    if (thread_1d_bufs == NULL || num_thread_bufs == 0) {
+        fprintf(stderr, "[ERROR] Rank %d: z_streaming_unpack requires thread_1d_bufs and num_thread_bufs > 0\n",
+                rank);
+        MPI_Abort(comm_2d, 1);
+    }
     
     // ========== UNPACKING: Extract this Z-slab from recv_buffer ==========
     // Loop over all arrays, all X in my region, all Y
@@ -67,6 +78,10 @@ void z_streaming_unpack(
     // Data arrives as [array][slice_batch_local][pencil] per batch
     // We need to compute cumulative offset of all previous batches + current batch offset
     // Write to local_z_slab in [Array][X][Y] format (Y stride-1 for FFT, better cache locality)
+    double t0_unpack = 0.0;
+    if (acc_unpack != NULL) {
+        t0_unpack = omp_get_wtime();
+    }
     #pragma omp parallel for collapse(3)
     for (int array_idx = 0; array_idx < narray; array_idx++) {
         for (int x_idx = 0; x_idx < x_count; x_idx++) {
@@ -135,6 +150,9 @@ void z_streaming_unpack(
                 ZSLAB(array_idx, x_idx, y, N, narray, x_count)[1] = recv_buffer[recv_offset][1];
             }
         }
+    }
+    if (acc_unpack != NULL) {
+        *acc_unpack += omp_get_wtime() - t0_unpack;
     }
     
     // // ========== DEBUG: Check for Inf values at specific indices BEFORE 1D FFT ==========
@@ -215,14 +233,30 @@ void z_streaming_unpack(
     }
     #endif
     
-    // ========== 1D FFT: Apply along Y-direction for each (Array, X) ==========
-    // In [Array][X][Y] format, Y is stride-1 for fixed (array_idx, x_idx)
+    // ========== 1D FFT: Staged copy -> FFT on aligned buffer -> copy back ==========
+    // One thread_1d_buffer per OpenMP thread; FFTW uses 1 thread inside each execute.
+    double t0_fft = 0.0;
+    if (acc_fft != NULL) {
+        t0_fft = omp_get_wtime();
+    }
     #pragma omp parallel for collapse(2) schedule(static)
     for (int array_idx = 0; array_idx < narray; array_idx++) {
         for (int x_idx = 0; x_idx < x_count; x_idx++) {
-            fftw_complex_t *y_data = &ZSLAB(array_idx, x_idx, 0, N, narray, x_count);
-            FFTW_EXECUTE_DFT(plan_1d_y, y_data, y_data);
+            int tid = omp_get_thread_num();
+            if (tid >= num_thread_bufs) {
+                fprintf(stderr, "[ERROR] Rank %d: omp thread_num %d >= num_thread_bufs %d\n",
+                        rank, tid, num_thread_bufs);
+                MPI_Abort(comm_2d, 1);
+            }
+            fftw_complex_t *thread_1d_buffer = thread_1d_bufs[tid];
+            fftw_complex_t *slab_line = &ZSLAB(array_idx, x_idx, 0, N, narray, x_count);
+            memcpy(thread_1d_buffer, slab_line, (size_t)N * sizeof(fftw_complex_t));
+            FFTW_EXECUTE_DFT(plan_1d_y, thread_1d_buffer, thread_1d_buffer);
+            memcpy(slab_line, thread_1d_buffer, (size_t)N * sizeof(fftw_complex_t));
         }
+    }
+    if (acc_fft != NULL) {
+        *acc_fft += omp_get_wtime() - t0_fft;
     }
     
     // // ========== DEBUG: Extract real(FFT(D + i*F)) or real(FFT(D)) for comparison ==========

@@ -19,7 +19,6 @@
     // FFTW 
     #define FFTW_INIT_THREADS        fftw_init_threads
     #define FFTW_PLAN_WITH_NTHREADS  fftw_plan_with_nthreads
-    #define FFTW_PLANNER_NTHREADS    fftw_planner_nthreads
     #define FFTW_PLAN_DFT_2D        fftw_plan_dft_2d
     #define FFTW_PLAN_MANY_DFT      fftw_plan_many_dft
     #define FFTW_PLAN_DFT_1D        fftw_plan_dft_1d
@@ -53,7 +52,6 @@
     // FFTW 
     #define FFTW_INIT_THREADS        fftwf_init_threads
     #define FFTW_PLAN_WITH_NTHREADS  fftwf_plan_with_nthreads
-    #define FFTW_PLANNER_NTHREADS    fftwf_planner_nthreads
     #define FFTW_PLAN_DFT_2D        fftwf_plan_dft_2d
     #define FFTW_PLAN_MANY_DFT      fftwf_plan_many_dft
     #define FFTW_PLAN_DFT_1D        fftwf_plan_dft_1d
