@@ -5,7 +5,8 @@ project(
     # default_options : ['cpp_std=gnu++17', 'debug=true', 'b_sanitize=address,undefined'],
     meson_version: '>=1.1.0',
 )
-add_project_arguments('-march=native', language: 'cpp')
+
+add_project_arguments('-march=' + get_option('march'), language: 'cpp')
 
 cxx = meson.get_compiler('cpp')
 
